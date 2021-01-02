@@ -109,8 +109,13 @@ Copie cada arquivo disponibilizados aqui para sua pasta, abaixo segue a estrutur
 Copia o conteúdo do iperf.lua para `/usr/lib/lua/luci/controller/iperf.lua`
 
 Cria a pasta iperf dentro do diretorio:  `/usr/lib/lua/luci/view/`
+
 Comando para criar a pasta: `mkdir /usr/lib/lua/luci/view/iperf`
-Copia o conteúdo do test.htm para /usr/lib/lua/luci/view/iperf/test.htm
+
+Copia o conteúdo do test.htm para `/usr/lib/lua/luci/view/iperf/test.htm`
+
 Copia o conteúdo do iperf para `/etc/config/iperf`
+
 Copia o conteúdo do luci-app-iperf.json para `/usr/share/luci/menu.d/luci-app-iperf.json`
+
 Copia o conteúdo do luci-app-iperf.json para `/usr/share/rpcd/acl.d/luci-app-iperf.json`
