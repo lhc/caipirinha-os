@@ -6,8 +6,8 @@ Estamos trabalhando para montar uma medidor de qualidade de conexão de internet
 Grupo realiza encontro mensais para discutir sobre o projeto e suas futuras implementações.
 
 # 2021
-02/Jan/2021 - [luci-app-iperf](https://github.com/lhc/caipirinha/tree/main/luci-app-iperf) via Tiago Fidel.
-02/Jan/2021 - [luci-app-SpeedTest](https://github.com/lhc/caipirinha/tree/main/luci-app-speedtest)
+- 02/Jan/2021 - [luci-app-iperf](https://github.com/lhc/caipirinha/tree/main/luci-app-iperf) via Tiago Fidel.
+- 02/Jan/2021 - [luci-app-SpeedTest](https://github.com/lhc/caipirinha/tree/main/luci-app-speedtest)
 
 
 # Espaço para conversas e interações
