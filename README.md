@@ -16,6 +16,7 @@ Grupo realiza encontro mensais para discutir sobre o projeto e suas futuras impl
 - 02/Jan/2021 - [luci-app-SpeedTest](https://github.com/lhc/caipirinha/tree/main/luci-app-speedtest) via Tiago Fidel.
 
 # Reportagem
+-[04/09/2020 Cybersecurity Training: Maintaining Confidentiality in a Shared Home Office Environment](https://totalsecurityadvisor.blr.com/cybersecurity/cybersecurity-training-maintaining-confidentiality-in-a-shared-home-office-environment/)
 -[14/07/2020 Hackers podem atacar roteadores de internet para redirecionar sites e roubar senhas; saiba se proteger
 ](https://g1.globo.com/economia/tecnologia/blog/altieres-rohr/post/2020/07/14/hackers-podem-atacar-roteadores-de-internet-para-redirecionar-sites-e-roubar-senhas-saiba-se-proteger.ghtml)
 -[21/06/2020 Manipulação das redes pode atingir 60 milhões de pessoas
