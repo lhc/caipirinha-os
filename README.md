@@ -20,6 +20,16 @@ Grupo realiza encontro mensais para discutir sobre o projeto e suas futuras impl
 ](https://g1.globo.com/economia/tecnologia/blog/altieres-rohr/post/2020/07/14/hackers-podem-atacar-roteadores-de-internet-para-redirecionar-sites-e-roubar-senhas-saiba-se-proteger.ghtml)
 -[21/06/2020 Manipulação das redes pode atingir 60 milhões de pessoas
 ](https://odia.ig.com.br/colunas/informe-do-dia/2020/06/5936565-manipulacao-das-redes-pode-atingir-60-milhoes-de-pessoas.html)
+-[06/2019 Análise de dispositivos IoT: vulnerabilidades mais comuns e formas de encontrá‑las](https://www.welivesecurity.com/br/2019/06/11/analise-de-dispositivos-iot-vulnerabilidades-mais-comuns-e-formas-de-encontra-las/)
+- [05/05/2019 Ongoing DNS Hijack Attack Hits Consumer Modems and Routers](https://www.darkreading.com/perimeter/ongoing-dns-hijack-attack-hits-consumer-modems-and-routers/d/d-id/1334355)
+-[Keeping your home Wi-Fi router reasonably secure](https://freedom.press/training/blog/wifi-router-security/)
+-[SIMETBox package feed for OpenWRT](https://github.com/simetnicbr/simetbox-openwrt-feed)
+
+
+# Referências 
+-[Conhecendo o OpenWrt](https://www.embarcados.com.br/conhecendo-o-openwrt/)
+-[Por dentro do OpenWRT](https://sergioprado.org/por-dentro-do-openwrt/)
+-[Analisando o firmware do meu roteador com o binwalk](https://sergioprado.org/analisando-firmware-roteador-com-binwalk/)
 
 # Espaço para conversas e interações
 - [Discourse LHC](https://discourse.lhc.net.br/c/Item-incomum-computaC3A7C3A3o-clC3A1ssica/11)
