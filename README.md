@@ -31,7 +31,8 @@ Grupo realiza encontro mensais para discutir sobre o projeto e suas futuras impl
 - [Conhecendo o OpenWrt](https://www.embarcados.com.br/conhecendo-o-openwrt/)
 - [Por dentro do OpenWRT](https://sergioprado.org/por-dentro-do-openwrt/)
 - [Analisando o firmware do meu roteador com o binwalk](https://sergioprado.org/analisando-firmware-roteador-com-binwalk/)
-
+- [WIFI](https://hpbn.co/wifi/#from-ethernet-to-a-wireless-lan)
+- 
 # Espaço para conversas e interações
 - [Discourse LHC](https://discourse.lhc.net.br/c/Item-incomum-computaC3A7C3A3o-clC3A1ssica/11)
 
