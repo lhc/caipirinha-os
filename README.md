@@ -6,10 +6,11 @@ Estamos trabalhando para montar uma medidor de qualidade de conexão de internet
 Grupo realiza encontro mensais para discutir sobre o projeto e suas futuras implementações.
 
 # Encontros
-- 29/Abril/2021 - [OpenWRT- Compilados dos eventos](https://discourse.lhc.net.br/t/29-04-2021-openwrt-compilados-dos-eventos/276)
-- 25/Março/2021 - [OpenWRT - Caipirinha-OS](https://discourse.lhc.net.br/t/25-03-2021-openwrt-caipirinha-os/260)
-- 25/Fev/2021 - [OpenWRT - ingredientes para a Caipirinha-OS](https://discourse.lhc.net.br/t/25-02-2021-openwrt-ingredientes-para-a-caipirinha-os/255)
-- 14/Jan/2021 - [OpenWRT - Fazendo caipirinha](https://discourse.lhc.net.br/t/14-01-2021-openwrt-fazendo-caipirinha/242/4)
+- 27/maio/2021 - [OpenWRT- Demandas e compilados](https://discourse.lhc.net.br/t/29-04-2021-caipirinha-os-demandas-e-compilados/280)
+- 29/abril/2021 - [OpenWRT- Compilados dos eventos](https://discourse.lhc.net.br/t/29-04-2021-openwrt-compilados-dos-eventos/276)
+- 25/março/2021 - [OpenWRT - Caipirinha-OS](https://discourse.lhc.net.br/t/25-03-2021-openwrt-caipirinha-os/260)
+- 25/fevereiro/2021 - [OpenWRT - ingredientes para a Caipirinha-OS](https://discourse.lhc.net.br/t/25-02-2021-openwrt-ingredientes-para-a-caipirinha-os/255)
+- 14/janeiro/2021 - [OpenWRT - Fazendo caipirinha](https://discourse.lhc.net.br/t/14-01-2021-openwrt-fazendo-caipirinha/242/4)
 
 
 # updates
