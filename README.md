@@ -6,6 +6,8 @@ Estamos trabalhando para montar uma medidor de qualidade de conexão de internet
 Grupo realiza encontro mensais para discutir sobre o projeto e suas futuras implementações.
 
 # Encontros
+- 27/janeiro/2022 - [OpenWRT-Capirinha-OS](https://meet.jit.si/capirinha-os)
+
 - 27/maio/2021 - [OpenWRT- Demandas e compilados](https://discourse.lhc.net.br/t/29-04-2021-caipirinha-os-demandas-e-compilados/280)
 - 29/abril/2021 - [OpenWRT- Compilados dos eventos](https://discourse.lhc.net.br/t/29-04-2021-openwrt-compilados-dos-eventos/276)
 - 25/março/2021 - [OpenWRT - Caipirinha-OS](https://discourse.lhc.net.br/t/25-03-2021-openwrt-caipirinha-os/260)
