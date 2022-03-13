@@ -20,6 +20,8 @@ Grupo realiza encontro mensais para discutir sobre o projeto e suas futuras impl
 - 02/Jan/2021 - [luci-app-SpeedTest](https://github.com/lhc/caipirinha/tree/main/luci-app-speedtest) via Tiago Fidel.
 
 # Reportagem
+- [08/03/2022 Chamada da RNP prevê pagar R$ 300 por mês para conexão de 8 mil escolas públicas](https://www.convergenciadigital.com.br/Inclusao-Digital/Chamada-da-RNP-preve-pagar-R%24-300-por-mes-para-conexao-de-8-mil-escolas-publicas-59637.html)
+
 - [04/09/2020 Cybersecurity Training: Maintaining Confidentiality in a Shared Home Office Environment](https://totalsecurityadvisor.blr.com/cybersecurity/cybersecurity-training-maintaining-confidentiality-in-a-shared-home-office-environment/)
 - [14/07/2020 Hackers podem atacar roteadores de internet para redirecionar sites e roubar senhas; saiba se proteger
 ](https://g1.globo.com/economia/tecnologia/blog/altieres-rohr/post/2020/07/14/hackers-podem-atacar-roteadores-de-internet-para-redirecionar-sites-e-roubar-senhas-saiba-se-proteger.ghtml)
