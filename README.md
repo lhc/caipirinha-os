@@ -1,19 +1,19 @@
 # Projeto Caipirinha
-Projeto aberto e colaborativo, estamos criando customizações para o OpenWRT, uma versão do LHC, 
- 
-Estamos trabalhando para montar uma medidor de qualidade de conexão de internet criando um novo menu e funcionalidade no OpenWRT.
+Projeto aberto e colaborativo, estamos criando customizações para o OpenWRT, uma versão do LHC. Estamos trabalhando para montar uma medidor de qualidade de conexão de internet criando um novo menu e funcionalidade no OpenWRT.
  
 Grupo realiza encontro mensais para discutir sobre o projeto e suas futuras implementações.
 
-# Encontros
-- 27/janeiro/2022 - [OpenWRT-Capirinha-OS](https://meet.jit.si/capirinha-os)
+# O Projeto está pausado. Iremos retornar com o projeto em março de 2023. 
+- Iremos realizar uma reunião para validar e definir pontos de desenvolvimento da versão do Caipirinha OS. 
 
+
+# Encontros [Pause]
+- 27/janeiro/2022 - [OpenWRT-Capirinha-OS](https://meet.jit.si/capirinha-os)
 - 27/maio/2021 - [OpenWRT- Demandas e compilados](https://discourse.lhc.net.br/t/29-04-2021-caipirinha-os-demandas-e-compilados/280)
 - 29/abril/2021 - [OpenWRT- Compilados dos eventos](https://discourse.lhc.net.br/t/29-04-2021-openwrt-compilados-dos-eventos/276)
 - 25/março/2021 - [OpenWRT - Caipirinha-OS](https://discourse.lhc.net.br/t/25-03-2021-openwrt-caipirinha-os/260)
 - 25/fevereiro/2021 - [OpenWRT - ingredientes para a Caipirinha-OS](https://discourse.lhc.net.br/t/25-02-2021-openwrt-ingredientes-para-a-caipirinha-os/255)
 - 14/janeiro/2021 - [OpenWRT - Fazendo caipirinha](https://discourse.lhc.net.br/t/14-01-2021-openwrt-fazendo-caipirinha/242/4)
-
 
 # updates
 - 02/Jan/2021 - [luci-app-iperf](https://github.com/lhc/caipirinha/tree/main/luci-app-iperf) via Tiago Fidel.
