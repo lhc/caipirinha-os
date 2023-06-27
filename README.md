@@ -3,10 +3,6 @@ Projeto aberto e colaborativo, estamos criando customizações para o OpenWRT, u
  
 Grupo realiza encontro mensais para discutir sobre o projeto e suas futuras implementações.
 
-# O Projeto está pausado. Iremos retornar com o projeto em março de 2023. 
-- Iremos realizar uma reunião para validar e definir pontos de desenvolvimento da versão do Caipirinha OS. 
-
-
 # Encontros [Pause]
 - 27/janeiro/2022 - [OpenWRT-Capirinha-OS](https://meet.jit.si/capirinha-os)
 - 27/maio/2021 - [OpenWRT- Demandas e compilados](https://discourse.lhc.net.br/t/29-04-2021-caipirinha-os-demandas-e-compilados/280)
@@ -48,3 +44,85 @@ Grupo realiza encontro mensais para discutir sobre o projeto e suas futuras impl
 - Douglas Esteves
 - Sicka
 - Éliton
+- Leandro Pereira
+
+##
+# Como preparar o contêiner de construção
+
+A compilação é feita dentro de um contêiner docker.
+
+Dentro deste repositório, execute:
+``` bash
+sudo env UID=$(id -u) GID=$(id -g) docker compose build
+```
+
+Certifique-se de inicializar os submódulos:
+``` bash
+git submodule update --init --recursive
+```
+Execute o contêiner
+
+``` bash
+sudo env UID=$(id -u) GID=$(id -g) docker compose run sindri
+```
+
+#
+## Ambiente
+
+Execute o script para preparar o ambiente (somente na primeira vez)
+``` bash
+./setup_build.sh
+```
+
+#
+## Como compilar o firmware
+
+Execute o contêiner:
+``` bash
+./build_image.sh -a caipirinha
+```
+
+## Opções avançadas:
+
+Opcionalmente, limpe o conteúdo criado anteriormente:
+``` bash
+make distclean
+```
+
+Atualize os feeds:
+``` bash
+./scripts/feeds update -a
+./scripts/feeds install -a
+```
+
+Gere o arquivo ```.config```:
+``` bash
+cp ../.config.caipirinha .config
+make defconfig
+```
+
+Para criar uma nova configuração de diferenças
+```
+./scripts/diffconfig.sh > ../.config.caipirinha
+```
+### (Opcional) Ajustar configurações
+
+``` bash
+make menuconfig
+```
+
+### Construindo o Firmware
+``` bash
+make download
+make -j4
+```
+
+Após a reclamação, as imagens podem ser encontradas na pasta **bin/targets/bcm27xx/bcm2710/**.
+```openwrt-ath79-generic-comfast_cf-e5-squashfs-sysupgrade.bin```
+
+### Como depurar se a compilação falhar?
+``` bash
+make download
+make -j1 V=sc
+```
+Os comandos acima permitirão o detalhamento e a compilação em um único thread para obter uma visualização do erro durante a compilação.

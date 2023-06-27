@@ -1,0 +1,18 @@
+version: '3'
+services:
+  sindri:
+    #user: "1001:1001" #"${UID}:${GID}"
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USER_ID: ${UID}
+        GROUP_ID: ${GID}
+    volumes:
+      - ./:/usr/local/src/custom_firmware/
+    ulimits:
+      nofile:
+        soft: 64000
+        hard: 64000
+
+
