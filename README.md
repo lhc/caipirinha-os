@@ -58,7 +58,7 @@ sudo env UID=$(id -u) GID=$(id -g) docker compose build
 
 Certifique-se de inicializar os submódulos:
 ``` bash
-atualização do submódulo git --init --recursive
+git submodule update --init --recursive
 ```
 Execute o contêiner
 
@@ -86,7 +86,7 @@ Execute o contêiner:
 
 Opcionalmente, limpe o conteúdo criado anteriormente:
 ``` bash
-fazer distclean
+make distclean
 ```
 
 Atualize os feeds:
@@ -98,7 +98,7 @@ Atualize os feeds:
 Gere o arquivo ```.config```:
 ``` bash
 cp ../.config.caipirinha .config
-fazer defconfig
+make defconfig
 ```
 
 Para criar uma nova configuração de diferenças
@@ -108,13 +108,13 @@ Para criar uma nova configuração de diferenças
 ### (Opcional) Ajustar configurações
 
 ``` bash
-fazer menuconfig
+make menuconfig
 ```
 
 ### Construindo o Firmware
 ``` bash
-fazer download
-fazer -j4
+make download
+make -j4
 ```
 
 Após a reclamação, as imagens podem ser encontradas na pasta **bin/targets/bcm27xx/bcm2710/**.
@@ -122,7 +122,7 @@ Após a reclamação, as imagens podem ser encontradas na pasta **bin/targets/bc
 
 ### Como depurar se a compilação falhar?
 ``` bash
-fazer download
-fazer -j1 V=sc
+make download
+make -j1 V=sc
 ```
 Os comandos acima permitirão o detalhamento e a compilação em um único thread para obter uma visualização do erro durante a compilação.
