@@ -114,13 +114,3 @@ if [ ! -f ./$target_path/$file_prefix-squashfs-sysupgrade.bin ];then
 	echo "**************"
 	exit 0
 fi
-
-echo "Copy Image"
-echo "Set up new directory name with date"
-DATE=`date +%Y%m%d-%H%M`
-mkdir -p $REPO_PATH/image/$APP-build-v$VERSION
-IMAGE_DIR=$REPO_PATH/image/$APP-build-v$VERSION
-
-echo ""
-echo  "***Move files to ./image/$APP-build--v$VERSION***"
-cp ./$target_path/$file_prefix-squashfs-sysupgrade.bin $IMAGE_DIR/caipirinha-$APP-squashfs-sysupgrade.bin
