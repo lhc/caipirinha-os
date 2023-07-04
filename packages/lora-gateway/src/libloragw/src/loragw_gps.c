@@ -4,7 +4,7 @@
  \____ \| ___ |    (_   _) ___ |/ ___)  _ \
  _____) ) ____| | | || |_| ____( (___| | | |
 (______/|_____)_|_|_| \__)_____)\____)_| |_|
-  (C)2013 Semtech-Cycleo
+  (C)2019 Semtech
 
 Description:
     Library of functions to manage a GNSS module (typically GPS) for accurate
@@ -12,7 +12,6 @@ Description:
     A limited set of module brands/models are supported.
 
 License: Revised BSD License, see LICENSE.TXT file include in the project
-Maintainer: Michael Coracin
 */
 
 
@@ -24,6 +23,7 @@ Maintainer: Michael Coracin
 #include <stdbool.h>    /* bool type */
 #include <stdio.h>      /* printf fprintf */
 #include <string.h>     /* memcpy */
+#include <errno.h>
 
 #include <time.h>       /* struct timespec */
 #include <fcntl.h>      /* open */
@@ -40,10 +40,12 @@ Maintainer: Michael Coracin
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 #if DEBUG_GPS == 1
     #define DEBUG_MSG(args...)  fprintf(stderr, args)
+    #define DEBUG_PRINTF(fmt, args...)    fprintf(stderr,"%s:%d: "fmt, __FUNCTION__, __LINE__, args)
     #define DEBUG_ARRAY(a,b,c)  for(a=0;a<b;++a) fprintf(stderr,"%x.",c[a]);fprintf(stderr,"end\n")
-    #define CHECK_NULL(a)       if(a==NULL){fprintf(stderr,"%s:%d: ERROR~ NULL POINTER AS ARGUMENT\n", __FUNCTION__, __LINE__);return LGW_GPS_ERROR;}
+    #define CHECK_NULL(a)       if(a==NULL){fprintf(stderr,"%s:%d: ERROR: NULL POINTER AS ARGUMENT\n", __FUNCTION__, __LINE__);return LGW_GPS_ERROR;}
 #else
     #define DEBUG_MSG(args...)
+    #define DEBUG_PRINTF(fmt, args...)
     #define DEBUG_ARRAY(a,b,c)  for(a=0;a!=0;){}
     #define CHECK_NULL(a)       if(a==NULL){return LGW_GPS_ERROR;}
 #endif
@@ -172,13 +174,13 @@ static bool validate_nmea_checksum(const char *serial_buff, int buff_size) {
 
     /* could we calculate a verification checksum ? */
     if (checksum_index < 0) {
-        DEBUG_MSG("ERROR~ IMPOSSIBLE TO PARSE NMEA SENTENCE\n");
+        DEBUG_MSG("ERROR: IMPOSSIBLE TO PARSE NMEA SENTENCE\n");
         return false;
     }
 
     /* check if there are enough char in the serial buffer to read checksum */
     if (checksum_index >= (buff_size - 2)) {
-        DEBUG_MSG("ERROR~ IMPOSSIBLE TO READ NMEA SENTENCE CHECKSUM\n");
+        DEBUG_MSG("ERROR: IMPOSSIBLE TO READ NMEA SENTENCE CHECKSUM\n");
         return false;
     }
 
@@ -186,7 +188,7 @@ static bool validate_nmea_checksum(const char *serial_buff, int buff_size) {
     if ((serial_buff[checksum_index] == checksum[0]) && (serial_buff[checksum_index+1] == checksum[1])) {
         return true;
     } else {
-        DEBUG_MSG("ERROR~ NMEA CHECKSUM %c%c DOESN'T MATCH VERIFICATION CHECKSUM %c%c\n", serial_buff[checksum_index], serial_buff[checksum_index+1], checksum[0], checksum[1]);
+        DEBUG_MSG("ERROR: NMEA CHECKSUM %c%c DOESN'T MATCH VERIFICATION CHECKSUM %c%c\n", serial_buff[checksum_index], serial_buff[checksum_index+1], checksum[0], checksum[1]);
         return false;
     }
 }
@@ -270,7 +272,7 @@ int lgw_gps_enable(char *tty_path, char *gps_family, speed_t target_brate, int *
     /* open TTY device */
     gps_tty_dev = open(tty_path, O_RDWR | O_NOCTTY);
     if (gps_tty_dev <= 0) {
-        DEBUG_MSG("ERROR~ TTY PORT FAIL TO OPEN, CHECK PATH AND ACCESS RIGHTS\n");
+        DEBUG_MSG("ERROR: TTY PORT FAIL TO OPEN, CHECK PATH AND ACCESS RIGHTS\n");
         return LGW_GPS_ERROR;
     }
     *fd_ptr = gps_tty_dev;
@@ -295,7 +297,7 @@ int lgw_gps_enable(char *tty_path, char *gps_family, speed_t target_brate, int *
     /* get actual serial port configuration */
     i = tcgetattr(gps_tty_dev, &ttyopt);
     if (i != 0) {
-        DEBUG_MSG("ERROR~ IMPOSSIBLE TO GET TTY PORT CONFIGURATION\n");
+        DEBUG_MSG("ERROR: IMPOSSIBLE TO GET TTY PORT CONFIGURATION\n");
         return LGW_GPS_ERROR;
     }
 
@@ -343,7 +345,7 @@ int lgw_gps_enable(char *tty_path, char *gps_family, speed_t target_brate, int *
     /* set new serial ports parameters */
     i = tcsetattr(gps_tty_dev, TCSANOW, &ttyopt);
     if (i != 0){
-        DEBUG_MSG("ERROR~ IMPOSSIBLE TO UPDATE TTY PORT CONFIGURATION\n");
+        DEBUG_MSG("ERROR: IMPOSSIBLE TO UPDATE TTY PORT CONFIGURATION\n");
         return LGW_GPS_ERROR;
     }
     tcflush(gps_tty_dev, TCIOFLUSH);
@@ -352,7 +354,7 @@ int lgw_gps_enable(char *tty_path, char *gps_family, speed_t target_brate, int *
     /* This is a binary message, serial port has to be properly configured to handle this */
     num_written = write (gps_tty_dev, ubx_cmd_timegps, UBX_MSG_NAVTIMEGPS_LEN);
     if (num_written != UBX_MSG_NAVTIMEGPS_LEN) {
-        DEBUG_MSG("ERROR~ Failed to write on serial port (written=%d)\n", (int) num_written);
+        DEBUG_MSG("ERROR: Failed to write on serial port (written=%d)\n", (int) num_written);
     }
 
     /* get timezone info */
@@ -374,14 +376,14 @@ int lgw_gps_disable(int fd) {
     /* restore serial ports parameters */
     i = tcsetattr(fd, TCSANOW, &ttyopt_restore);
     if (i != 0){
-        DEBUG_MSG("ERROR~ IMPOSSIBLE TO RESTORE TTY PORT CONFIGURATION\n");
+        DEBUG_MSG("ERROR: IMPOSSIBLE TO RESTORE TTY PORT CONFIGURATION - %s\n", strerror(errno));
         return LGW_GPS_ERROR;
     }
     tcflush(fd, TCIOFLUSH);
 
     i = close(fd);
-    if (i <= 0) {
-        DEBUG_MSG("ERROR~ TTY PORT FAIL TO CLOSE\n");
+    if (i != 0) {
+        DEBUG_PRINTF("ERROR: TTY PORT FAIL TO CLOSE - %s\n", strerror(errno));
         return LGW_GPS_ERROR;
     }
 
@@ -404,7 +406,7 @@ enum gps_msg lgw_parse_ubx(const char *serial_buff, size_t buff_size, size_t *ms
         return IGNORED;
     }
     if (buff_size < 8) {
-        DEBUG_MSG("ERROR~ TOO SHORT TO BE A VALID UBX MESSAGE\n");
+        DEBUG_MSG("ERROR: TOO SHORT TO BE A VALID UBX MESSAGE\n");
         return IGNORED;
     }
 
@@ -484,15 +486,15 @@ enum gps_msg lgw_parse_ubx(const char *serial_buff, size_t buff_size, size_t *ms
                     DEBUG_MSG("NOTE: UBX ACK-ACK received\n");
                     return IGNORED;
                 } else { /* not a supported message */
-                    DEBUG_MSG("ERROR~ UBX message is not supported (%02x %02x)\n", serial_buff[2], serial_buff[3]);
+                    DEBUG_MSG("ERROR: UBX message is not supported (%02x %02x)\n", serial_buff[2], serial_buff[3]);
                     return IGNORED;
                 }
             } else { /* checksum failed */
-                DEBUG_MSG("ERROR~ UBX message is corrupted, checksum failed\n");
+                DEBUG_MSG("ERROR: UBX message is corrupted, checksum failed\n");
                 return INVALID;
             }
         } else { /* message contains less bytes than indicated by header */
-            DEBUG_MSG("ERROR~ UBX message incomplete\n");
+            DEBUG_MSG("ERROR: UBX message incomplete\n");
             return INCOMPLETE;
         }
     } else { /* Not a UBX message */
@@ -521,7 +523,7 @@ enum gps_msg lgw_parse_nmea(const char *serial_buff, int buff_size) {
 
     /* look for some NMEA sentences in particular */
     if (buff_size < 8) {
-        DEBUG_MSG("ERROR~ TOO SHORT TO BE A VALID NMEA SENTENCE\n");
+        DEBUG_MSG("ERROR: TOO SHORT TO BE A VALID NMEA SENTENCE\n");
         return UNKNOWN;
     } else if (!validate_nmea_checksum(serial_buff, buff_size)) {
         DEBUG_MSG("Warning: invalid NMEA sentence (bad checksum)\n");
@@ -534,10 +536,8 @@ enum gps_msg lgw_parse_nmea(const char *serial_buff, int buff_size) {
         */
         memcpy(parser_buf, serial_buff, buff_size);
         parser_buf[buff_size] = '\0';
-        //printf("\nNote(RMC): %s\n", parser_buf);
         nb_fields = str_chop(parser_buf, buff_size, ',', str_index, ARRAY_SIZE(str_index));
-        //printf("\nNote(RMC): (,)%d\n", nb_fields);
-        if (nb_fields < 13) {
+        if (nb_fields != 13) {
             DEBUG_MSG("Warning: invalid RMC sentence (number of fields)\n");
             return IGNORED;
         }
@@ -552,7 +552,7 @@ enum gps_msg lgw_parse_nmea(const char *serial_buff, int buff_size) {
         if ((i == 4) && (j == 3)) {
             if ((gps_mod == 'A') || (gps_mod == 'D')) {
                 gps_time_ok = true;
-                DEBUG_MSG("Note: [GPS]Valid RMC sentence, GPS locked, date: 20%02d-%02d-%02dT%02d:%02d:%06.3fZ\n", gps_yea, gps_mon, gps_day, gps_hou, gps_min, gps_fra + (float)gps_sec);
+                DEBUG_MSG("Note: Valid RMC sentence, GPS locked, date: 20%02d-%02d-%02dT%02d:%02d:%06.3fZ\n", gps_yea, gps_mon, gps_day, gps_hou, gps_min, gps_fra + (float)gps_sec);
             } else {
                 gps_time_ok = false;
                 DEBUG_MSG("Note: Valid RMC sentence, no satellite fix, estimated date: 20%02d-%02d-%02dT%02d:%02d:%06.3fZ\n", gps_yea, gps_mon, gps_day, gps_hou, gps_min, gps_fra + (float)gps_sec);
@@ -607,7 +607,7 @@ int lgw_gps_get(struct timespec *utc, struct timespec *gps_time, struct coord_s 
 
     if (utc != NULL) {
         if (!gps_time_ok) {
-            DEBUG_MSG("ERROR~ NO VALID TIME TO RETURN\n");
+            DEBUG_MSG("ERROR: NO VALID TIME TO RETURN\n");
             return LGW_GPS_ERROR;
         }
         memset(&x, 0, sizeof(x));
@@ -623,7 +623,7 @@ int lgw_gps_get(struct timespec *utc, struct timespec *gps_time, struct coord_s 
         x.tm_sec = gps_sec;
         y = mktime(&x) - timezone; /* need to substract timezone bc mktime assumes time vector is local time */
         if (y == (time_t)(-1)) {
-            DEBUG_MSG("ERROR~ FAILED TO CONVERT BROKEN-DOWN TIME\n");
+            DEBUG_MSG("ERROR: FAILED TO CONVERT BROKEN-DOWN TIME\n");
             return LGW_GPS_ERROR;
         }
         utc->tv_sec = y;
@@ -631,7 +631,7 @@ int lgw_gps_get(struct timespec *utc, struct timespec *gps_time, struct coord_s 
     }
     if (gps_time != NULL) {
         if (!gps_time_ok) {
-            DEBUG_MSG("ERROR~ NO VALID TIME TO RETURN\n");
+            DEBUG_MSG("ERROR: NO VALID TIME TO RETURN\n");
             return LGW_GPS_ERROR;
         }
         fractpart = modf(((double)gps_iTOW / 1E3) + ((double)gps_fTOW / 1E9), &intpart);
@@ -644,7 +644,7 @@ int lgw_gps_get(struct timespec *utc, struct timespec *gps_time, struct coord_s 
     }
     if (loc != NULL) {
         if (!gps_pos_ok) {
-            DEBUG_MSG("ERROR~ NO VALID POSITION TO RETURN\n");
+            DEBUG_MSG("ERROR: NO VALID POSITION TO RETURN\n");
             return LGW_GPS_ERROR;
         }
         loc->lat = ((double)gps_dla + (gps_mla/60.0)) * ((gps_ola == 'N')?1.0:-1.0);
@@ -741,7 +741,7 @@ int lgw_cnt2utc(struct tref ref, uint32_t count_us, struct timespec *utc) {
 
     CHECK_NULL(utc);
     if ((ref.systime == 0) || (ref.xtal_err > PLUS_10PPM) || (ref.xtal_err < MINUS_10PPM)) {
-        DEBUG_MSG("ERROR~ INVALID REFERENCE FOR CNT -> UTC CONVERSION\n");
+        DEBUG_MSG("ERROR: INVALID REFERENCE FOR CNT -> UTC CONVERSION\n");
         return LGW_GPS_ERROR;
     }
 
@@ -769,7 +769,7 @@ int lgw_utc2cnt(struct tref ref, struct timespec utc, uint32_t *count_us) {
 
     CHECK_NULL(count_us);
     if ((ref.systime == 0) || (ref.xtal_err > PLUS_10PPM) || (ref.xtal_err < MINUS_10PPM)) {
-        DEBUG_MSG("ERROR~ INVALID REFERENCE FOR UTC -> CNT CONVERSION\n");
+        DEBUG_MSG("ERROR: INVALID REFERENCE FOR UTC -> CNT CONVERSION\n");
         return LGW_GPS_ERROR;
     }
 
@@ -792,7 +792,7 @@ int lgw_cnt2gps(struct tref ref, uint32_t count_us, struct timespec *gps_time) {
 
     CHECK_NULL(gps_time);
     if ((ref.systime == 0) || (ref.xtal_err > PLUS_10PPM) || (ref.xtal_err < MINUS_10PPM)) {
-        DEBUG_MSG("ERROR~ INVALID REFERENCE FOR CNT -> GPS CONVERSION\n");
+        DEBUG_MSG("ERROR: INVALID REFERENCE FOR CNT -> GPS CONVERSION\n");
         return LGW_GPS_ERROR;
     }
 
@@ -820,7 +820,7 @@ int lgw_gps2cnt(struct tref ref, struct timespec gps_time, uint32_t *count_us) {
 
     CHECK_NULL(count_us);
     if ((ref.systime == 0) || (ref.xtal_err > PLUS_10PPM) || (ref.xtal_err < MINUS_10PPM)) {
-        DEBUG_MSG("ERROR~ INVALID REFERENCE FOR GPS -> CNT CONVERSION\n");
+        DEBUG_MSG("ERROR: INVALID REFERENCE FOR GPS -> CNT CONVERSION\n");
         return LGW_GPS_ERROR;
     }
 

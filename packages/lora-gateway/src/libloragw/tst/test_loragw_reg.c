@@ -4,131 +4,201 @@
  \____ \| ___ |    (_   _) ___ |/ ___)  _ \
  _____) ) ____| | | || |_| ____( (___| | | |
 (______/|_____)_|_|_| \__)_____)\____)_| |_|
-  (C)2013 Semtech-Cycleo
+  (C)2019 Semtech
 
 Description:
-    Minimum test program for the loragw_spi 'library'
+    Minimum test program for the loragw_reg module
 
 License: Revised BSD License, see LICENSE.TXT file include in the project
-Maintainer: Sylvain Miermont
 */
-
 
 /* -------------------------------------------------------------------------- */
 /* --- DEPENDANCIES --------------------------------------------------------- */
 
+/* Fix an issue between POSIX and C99 */
+#if __STDC_VERSION__ >= 199901L
+    #define _XOPEN_SOURCE 600
+#else
+    #define _XOPEN_SOURCE 500
+#endif
+
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>     /* getopt, access */
+#include <math.h>
 
 #include "loragw_reg.h"
+#include "loragw_aux.h"
+#include "loragw_hal.h"
+
+/* -------------------------------------------------------------------------- */
+/* --- PRIVATE MACROS ------------------------------------------------------- */
+
+#define LINUXDEV_PATH_DEFAULT "/dev/spidev1.0"
+
+/* -------------------------------------------------------------------------- */
+/* --- PRIVATE CONSTANTS ---------------------------------------------------- */
+
+extern const struct lgw_reg_s loregs[LGW_TOTALREGS+1];
+
+/* -------------------------------------------------------------------------- */
+/* --- SUBFUNCTIONS DECLARATION --------------------------------------------- */
+
+static void usage(void);
 
 /* -------------------------------------------------------------------------- */
 /* --- MAIN FUNCTION -------------------------------------------------------- */
 
-#define BURST_TEST_LENGTH    8192
-
-int main()
+int main(int argc, char ** argv)
 {
-    int32_t read_value, test_value;
-    uint16_t lfsr;
-    uint8_t burst_buffout[BURST_TEST_LENGTH];
-    uint8_t burst_buffin[BURST_TEST_LENGTH];
-    int i;
+    int x, i;
+    int32_t val;
+    bool error_found = false;
+    uint8_t rand_values[LGW_TOTALREGS];
+    bool reg_ignored[LGW_TOTALREGS]; /* store register to be ignored */
+    uint8_t reg_val;
+    uint8_t reg_max;
 
-    printf("Beginning of test for loragw_reg.c\n");
+    /* SPI interfaces */
+    const char spidev_path_default[] = LINUXDEV_PATH_DEFAULT;
+    const char * spidev_path = spidev_path_default;
 
-    lgw_connect(false, 129E3);
-    /* 2 SPI transactions:
-    -> 0x80 0x00        <- 0x00 0x00        forcing page 0
-    -> 0x01 0x00        <- 0x00 0x64        checking version
-    */
+    /* Parse command line options */
+    while ((i = getopt(argc, argv, "hd:")) != -1) {
+        switch (i) {
+            case 'h':
+                usage();
+                return EXIT_SUCCESS;
+                break;
 
-    /* --- READ TEST --- */
+            case 'd':
+                if (optarg != NULL) {
+                    spidev_path = optarg;
+                }
+                break;
 
-    lgw_reg_w(LGW_SOFT_RESET, 1);
-    lgw_reg_check(stdout);
-
-    /* --- READ/WRITE COHERENCY TEST --- */
-
-    /* 8b unsigned */
-    test_value = 197; /* 11000101b */
-    lgw_reg_w(LGW_IMPLICIT_PAYLOAD_LENGHT, test_value);
-    lgw_reg_r(LGW_IMPLICIT_PAYLOAD_LENGHT, &read_value);
-    printf("IMPLICIT_PAYLOAD_LENGHT = %d (should be %d)\n", read_value, test_value);
-
-    /* 8b signed */
-    /* NO SUCH REG AVAILABLE */
-    // /* RADIO_SELECT is normally unsigned, modify it manually in loragw_reg.c */
-    // test_value = -59; /* 11000101b */
-    // lgw_reg_w(LGW_RADIO_SELECT, test_value);
-    // lgw_reg_r(LGW_RADIO_SELECT, &read_value);
-    // printf("RADIO_SELECT = %d (should be %d)\n", read_value, test_value);
-
-    /* less than 8b, with offset, unsigned */
-    test_value = 11; /* 1011b */
-    lgw_reg_w(LGW_FRAME_SYNCH_PEAK2_POS, test_value);
-    lgw_reg_r(LGW_FRAME_SYNCH_PEAK2_POS, &read_value);
-    printf("FRAME_SYNCH_PEAK2_POS = %d (should be %d)\n", read_value, test_value);
-
-    /* less than 8b, with offset, signed */
-    /* NO SUCH REG AVAILABLE */
-    // /* MBWSSF_FRAME_SYNCH_PEAK2_POS is normally unsigned, modify it manually in loragw_reg.c */
-    // test_value = -5; /* 1011b */
-    // lgw_reg_w(LGW_MBWSSF_FRAME_SYNCH_PEAK2_POS, test_value);
-    // lgw_reg_r(LGW_MBWSSF_FRAME_SYNCH_PEAK2_POS, &read_value);
-    // printf("MBWSSF_FRAME_SYNCH_PEAK2_POS = %d (should be %d)\n", read_value, test_value);
-
-    /* 16b unsigned */
-    test_value = 49253; /* 11000000 01100101b */
-    lgw_reg_w(LGW_PREAMBLE_SYMB1_NB, test_value);
-    lgw_reg_r(LGW_PREAMBLE_SYMB1_NB, &read_value);
-    printf("PREAMBLE_SYMB1_NB = %d (should be %d)\n", read_value, test_value);
-
-    /* 16b signed */
-    /* NO SUCH REG AVAILABLE */
-    // /* CAPTURE_PERIOD is normally unsigned, modify it manually in loragw_reg.c */
-    // test_value = -16283; /* 11000000 01100101b */
-    // lgw_reg_w(LGW_CAPTURE_PERIOD, test_value);
-    // lgw_reg_r(LGW_CAPTURE_PERIOD, &read_value);
-    // printf("CAPTURE_PERIOD = %d (should be %d)\n", read_value, test_value);
-
-    /* between 8b and 16b, unsigned */
-    test_value = 3173; /* 1100 01100101b */
-    lgw_reg_w(LGW_ADJUST_MODEM_START_OFFSET_SF12_RDX4, test_value);
-    lgw_reg_r(LGW_ADJUST_MODEM_START_OFFSET_SF12_RDX4, &read_value);
-    printf("ADJUST_MODEM_START_OFFSET_SF12_RDX4 = %d (should be %d)\n", read_value, test_value);
-
-    /* between 8b and 16b, signed */
-    test_value = -1947; /* 11000 01100101b */
-    lgw_reg_w(LGW_IF_FREQ_1, test_value);
-    lgw_reg_r(LGW_IF_FREQ_1, &read_value);
-    printf("IF_FREQ_1 = %d (should be %d)\n", read_value, test_value);
-
-    /* --- BURST WRITE AND READ TEST --- */
-
-    /* initialize data for SPI test */
-    lfsr = 0xFFFF;
-    for(i=0; i<BURST_TEST_LENGTH; ++i) {
-        burst_buffout[i] = (uint8_t)(lfsr ^ (lfsr >> 4));
-        /* printf("%05d # 0x%04x 0x%02x\n", i, lfsr, burst_buffout[i]); */
-        lfsr = (lfsr & 1) ? ((lfsr >> 1) ^ 0x8679) : (lfsr >> 1);
+            default:
+                printf("ERROR: argument parsing options, use -h option for help\n");
+                usage();
+                return EXIT_FAILURE;
+            }
     }
 
-    lgw_reg_wb(LGW_TX_DATA_BUF_DATA, burst_buffout, 256);
-    lgw_reg_rb(LGW_RX_DATA_BUF_DATA, burst_buffin, 256);
+    /* Board reset */
+    if (system("./reset_lgw.sh start") != 0) {
+        printf("ERROR: failed to reset SX1302, check your reset_lgw.sh script\n");
+        exit(EXIT_FAILURE);
+    }
 
-    /* impossible to check in software,
-    RX_DATA_BUF_DATA is read-only,
-    TX_DATA_BUF_DATA is write only,
-    use a logic analyser */
+    x = lgw_connect(spidev_path);
+    if (x != LGW_REG_SUCCESS) {
+        printf("ERROR: failed to connect\n");
+        return -1;
+    }
 
-    /* --- END OF TEST --- */
+    /* The following registers cannot be tested this way */
+    memset(reg_ignored, 0, sizeof reg_ignored);
+    reg_ignored[SX1302_REG_COMMON_CTRL0_CLK32_RIF_CTRL] = true; /* all test fails if we set this one to 1 */
 
-    lgw_disconnect();
-    /* no SPI transaction */
+    /* Test 1: read all registers and check default value for non-read-only registers */
+    printf("## TEST#1: read all registers and check default value for non-read-only registers\n");
+    error_found = false;
+    for (i = 0; i < LGW_TOTALREGS; i++) {
+        if (loregs[i].rdon == 0) {
+            x = lgw_reg_r(i, &val);
+            if (x != LGW_REG_SUCCESS) {
+                printf("ERROR: failed to read register at index %d\n", i);
+                return -1;
+            }
+            if (val != loregs[i].dflt) {
+                printf("ERROR: default value for register at index %d is %d, should be %d\n", i, val, loregs[i].dflt);
+                error_found = true;
+            }
+        }
+    }
+    printf("------------------\n");
+    printf(" TEST#1 %s\n", (error_found == false) ? "PASSED" : "FAILED");
+    printf("------------------\n\n");
 
-    printf("End of test for loragw_reg.c\n");
+    /* Test 2: read/write test on all non-read-only, non-pulse, non-w0clr, non-w1clr registers */
+    printf("## TEST#2: read/write test on all non-read-only, non-pulse, non-w0clr, non-w1clr registers\n");
+    /* Write all registers with a random value */
+    error_found = false;
+    for (i = 0; i < LGW_TOTALREGS; i++) {
+        if ((loregs[i].rdon == 0) && (reg_ignored[i] == false)) {
+            /* Peek a random value different form the default reg value */
+            reg_max = pow(2, loregs[i].leng) - 1;
+            if (loregs[i].leng == 1) {
+                reg_val = !loregs[i].dflt;
+            } else {
+                /* ensure random value is not the default one */
+                do {
+                    if (loregs[i].sign == 1) {
+                        reg_val = rand() % (reg_max / 2);
+                    } else {
+                        reg_val = rand() % reg_max;
+                    }
+                } while (reg_val == loregs[i].dflt);
+            }
+            /* Write selected value */
+            x = lgw_reg_w(i, reg_val);
+            if (x != LGW_REG_SUCCESS) {
+                printf("ERROR: failed to read register at index %d\n", i);
+                return -1;
+            }
+            /* store value for later check */
+            rand_values[i] = reg_val;
+        }
+    }
+    /* Read all registers and check if we got proper random value back */
+    for (i = 0; i < LGW_TOTALREGS; i++) {
+        if ((loregs[i].rdon == 0) && (loregs[i].chck == 1) && (reg_ignored[i] == false)) {
+            x = lgw_reg_r(i, &val);
+            if (x != LGW_REG_SUCCESS) {
+                printf("ERROR: failed to read register at index %d\n", i);
+                return -1;
+            }
+            /* check value */
+            if (val != rand_values[i]) {
+                printf("ERROR: value read from register at index %d differs from the written value (w:%u r:%d)\n", i, rand_values[i], val);
+                error_found = true;
+            } else {
+                //printf("INFO: MATCH reg %d (%u, %u)\n", i, rand_values[i], (uint8_t)val);
+            }
+        }
+    }
+    printf("------------------\n");
+    printf(" TEST#2 %s\n", (error_found == false) ? "PASSED" : "FAILED");
+    printf("------------------\n\n");
+
+    x = lgw_disconnect();
+    if (x != LGW_REG_SUCCESS) {
+        printf("ERROR: failed to disconnect\n");
+        return -1;
+    }
+
+    /* Board reset */
+    if (system("./reset_lgw.sh stop") != 0) {
+        printf("ERROR: failed to reset SX1302, check your reset_lgw.sh script\n");
+        exit(EXIT_FAILURE);
+    }
+
     return 0;
 }
+
+/* -------------------------------------------------------------------------- */
+/* --- SUBFUNCTIONS DEFINITION ---------------------------------------------- */
+
+static void usage(void) {
+    printf("~~~ Library version string~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
+    printf(" %s\n", lgw_version_info());
+    printf("~~~ Available options ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
+    printf(" -h            print this help\n");
+    printf(" -d <path>     use Linux SPI device driver\n");
+    printf("               => default path: " LINUXDEV_PATH_DEFAULT "\n");
+}
+
 
 /* --- EOF ------------------------------------------------------------------ */

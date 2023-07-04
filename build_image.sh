@@ -45,7 +45,7 @@ BUILD_TIME="`date`"
 
 ARCH="bcm27xx"
 
-file_prefix="openwrt-caipirinha"
+file_prefix="caipirinha-os-bcm27xx-bcm2710-rpi-3"
 target_path="bin/targets/bcm27xx/bcm2710"
 
 echo ""
@@ -95,7 +95,7 @@ echo "Build time: $BUILD_TIME"
 echo ""
 
 
-[ -f ./$target_path/$file_prefix-squashfs-sysupgrade.bin ] && rm -rf ./$target_path/??*
+[ -f ./$target_path/$file_prefix-squashfs-sysupgrade.img.gz ] && rm -rf ./$target_path/??*
 
 echo ""
 if [ ! -z $SFLAG ];then
@@ -106,7 +106,7 @@ else
 	make -j $(($(nproc)+1)) download world
 fi
 
-if [ ! -f ./$target_path/$file_prefix-squashfs-sysupgrade.bin ];then
+if [ ! -f ./$target_path/$file_prefix-squashfs-sysupgrade.img.gz ];then
 	echo ""
 	echo "Build Fails, run below commands to build the image in single thread and check what is wrong"
 	echo "**************"
