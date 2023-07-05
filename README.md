@@ -3,7 +3,12 @@ Projeto aberto e colaborativo, estamos criando customizações para o OpenWRT, u
  
 Grupo realiza encontro mensais para discutir sobre o projeto e suas futuras implementações.
 
-# Encontros [Pause]
+# Encontros 
+- Segunda temporada
+- 20/Julho/2023 - 
+- [definindo]
+- 
+- Primeira temporada
 - 27/janeiro/2022 - [OpenWRT-Capirinha-OS](https://meet.jit.si/capirinha-os)
 - 27/maio/2021 - [OpenWRT- Demandas e compilados](https://discourse.lhc.net.br/t/29-04-2021-caipirinha-os-demandas-e-compilados/280)
 - 29/abril/2021 - [OpenWRT- Compilados dos eventos](https://discourse.lhc.net.br/t/29-04-2021-openwrt-compilados-dos-eventos/276)
