@@ -52,7 +52,7 @@ Grupo realiza encontro mensais para discutir sobre o projeto e suas futuras impl
 - Leandro Pereira
 
 ##
-# Como preparar o contêiner de construção
+# Como preparar o ambiente de build
 
 A compilação é feita dentro de um contêiner docker.
 
