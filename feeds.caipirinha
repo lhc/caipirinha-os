@@ -2,5 +2,5 @@ src-git packages https://git.openwrt.org/feed/packages.git^d057936acbefd76b033e7
 src-git luci https://git.openwrt.org/project/luci.git^0b38d70fbd47b0c702d5001de623213eb301a6fe
 src-git routing https://git.openwrt.org/feed/routing.git^1cc7676b9f32acc30ec47f15fcb70380d5d6ef01
 src-git telephony https://git.openwrt.org/feed/telephony.git^36d9f2f962bd0aba2eef674eb265819609ea99ed
-#src-git sx1302 https://github.com/LeandroTE/sx1302_openwrt;main
+src-git lora https://github.com/lhc/lorawan-feed;master
 src-link local /usr/local/src/custom_firmware/packages

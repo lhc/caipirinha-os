@@ -1,13 +1,13 @@
 # Projeto Caipirinha
 Projeto aberto e colaborativo, estamos criando customizações para o OpenWRT, uma versão do LHC. Estamos trabalhando para montar uma medidor de qualidade de conexão de internet criando um novo menu e funcionalidade no OpenWRT.
- 
+
 Grupo realiza encontro mensais para discutir sobre o projeto e suas futuras implementações.
 
-# Encontros 
+# Encontros
 - Segunda temporada
-- 20/Julho/2023 - 
+- 20/Julho/2023 -
 - [definindo]
-- 
+-
 - Primeira temporada
 - 27/janeiro/2022 - [OpenWRT-Capirinha-OS](https://meet.jit.si/capirinha-os)
 - 27/maio/2021 - [OpenWRT- Demandas e compilados](https://discourse.lhc.net.br/t/29-04-2021-caipirinha-os-demandas-e-compilados/280)
@@ -34,7 +34,7 @@ Grupo realiza encontro mensais para discutir sobre o projeto e suas futuras impl
 - [SIMETBox package feed for OpenWRT](https://github.com/simetnicbr/simetbox-openwrt-feed)
 
 
-# Referências 
+# Referências
 - [Conhecendo o OpenWrt](https://www.embarcados.com.br/conhecendo-o-openwrt/)
 - [Por dentro do OpenWRT](https://sergioprado.org/por-dentro-do-openwrt/)
 - [Analisando o firmware do meu roteador com o binwalk](https://sergioprado.org/analisando-firmware-roteador-com-binwalk/)
@@ -43,7 +43,7 @@ Grupo realiza encontro mensais para discutir sobre o projeto e suas futuras impl
 # Espaço para conversas e interações
 - [Discourse LHC](https://discourse.lhc.net.br/c/Item-incomum-computaC3A7C3A3o-clC3A1ssica/11)
 
-# Participantes 
+# Participantes
 - Ronaldo Nunez
 - Tiage Fidel
 - Douglas Esteves
@@ -88,6 +88,9 @@ Execute o contêiner:
 ```
 
 ## Opções avançadas:
+
+Os comandos a seguir devem ser executados dentro do contêiner, especificamente na
+pasta `openwrt`:
 
 Opcionalmente, limpe o conteúdo criado anteriormente:
 ``` bash
