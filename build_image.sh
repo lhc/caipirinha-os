@@ -106,11 +106,3 @@ else
 	make -j $(($(nproc)+1)) download world
 fi
 
-if [ ! -f ./$target_path/$file_prefix-squashfs-sysupgrade.img.gz ];then
-	echo ""
-	echo "Build Fails, run below commands to build the image in single thread and check what is wrong"
-	echo "**************"
-	echo "	./build_image.sh -s V=99"
-	echo "**************"
-	exit 0
-fi
