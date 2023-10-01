@@ -21,10 +21,6 @@ shift $(($OPTIND - 1))
 
 REPO_PATH=$(pwd)
 
-cd $REPO_PATH
-echo "*** Backup original feeds files if they exist"
-[ -f $OPENWRT_PATH/feeds.conf.default ] &&  mv $OPENWRT_PATH/feeds.conf.default $OPENWRT_PATH/feeds.conf.default.bak
-
 echo "*** Copy feeds used in Caipirinha-OS"
 cp feeds.caipirinha $OPENWRT_PATH/feeds.conf.default
 
