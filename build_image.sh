@@ -43,48 +43,34 @@ BUILD=$APP-$VERSION
 
 BUILD_TIME="`date`"
 
-ARCH="bcm27xx"
-
-file_prefix="caipirinha-os-bcm27xx-bcm2710-rpi-3"
-target_path="bin/targets/bcm27xx/bcm2710"
-
 echo ""
 
-echo "Remove custom files from last build"
+if [ -f conf/$APP/.config ];then
+	echo ""
+	echo "***Find customized .config files***"
+else 
+	echo ""
+	echo "***Can't find conf/$APP/.config file exiting***"
+	exit
+fi
 
+echo "Remove custom files from last build"
 rm -rf $OPENWRT_PATH/files
 
 echo "***Copy general_files to OpenWrt***"
-cp -r general_files $OPENWRT_PATH/files
+cp -r conf/$APP/files $OPENWRT_PATH/files
 
 echo "***.config.$APP to OpenWrt/.config***"
-cp .config.$APP $OPENWRT_PATH/.config
+cp conf/$APP/.config $OPENWRT_PATH/.config
 
-cd $REPO_PATH
-
-if [ -f .config.$APP ];then
-	echo ""
-	echo "***Find customized .config files***"
-	echo "Replace default .config file with .config.$APP"
-	echo ""
-	cp .config.$APP $OPENWRT_PATH/.config
-else 
-	echo ""
-	echo "***Can't find .config.$APP file***"
-	echo "Use default .config.$DEFAULT_APP"
-	echo ""
-fi
-
-echo ""
+echo "***Creates symbolic link for patches***"
+ln -s $APP/patches conf/patches
 
 echo "***Entering build directory***"
-
 cd $OPENWRT_PATH
-
+echo "Applying patches"
+quilt push -a
 make defconfig
-
-#make sure fresh the luci-app on each build
-#rm -rf build_dir/target-mips_24kc_musl/luci-app-*
 
 echo ""
 
@@ -93,9 +79,6 @@ echo "***Update build version and build date***"
 echo "Build: $BUILD"
 echo "Build time: $BUILD_TIME"
 echo ""
-
-
-[ -f ./$target_path/$file_prefix-squashfs-sysupgrade.img.gz ] && rm -rf ./$target_path/??*
 
 echo ""
 if [ ! -z $SFLAG ];then

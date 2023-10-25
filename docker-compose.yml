@@ -1,7 +1,6 @@
 version: '3'
 services:
   sindri:
-    #user: "1001:1001" #"${UID}:${GID}"
     build:
       context: .
       dockerfile: Dockerfile
@@ -14,5 +13,6 @@ services:
       nofile:
         soft: 64000
         hard: 64000
-
+    environment:
+      - QUILT_PATCHES=/usr/local/src/custom_firmware/conf/patches
 

@@ -36,4 +36,6 @@ sleep 2
 $OPENWRT_PATH/scripts/feeds install -a
 echo " "
 
+echo "*** start patches"
+quilt init
 echo "End of script"
