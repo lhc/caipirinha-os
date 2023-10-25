@@ -64,6 +64,7 @@ echo "***.config.$APP to OpenWrt/.config***"
 cp conf/$APP/.config $OPENWRT_PATH/.config
 
 echo "***Creates symbolic link for patches***"
+rm -f conf/patches
 ln -s $APP/patches conf/patches
 
 echo "***Entering build directory***"
@@ -71,7 +72,6 @@ cd $OPENWRT_PATH
 echo "Applying patches"
 quilt push -a
 make defconfig
-
 echo ""
 
 echo ""
@@ -88,4 +88,3 @@ else
 	echo "***Run make"
 	make -j $(($(nproc)+1)) download world
 fi
-
