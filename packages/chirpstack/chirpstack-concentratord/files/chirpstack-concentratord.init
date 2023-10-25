@@ -1,0 +1,190 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=99
+
+USE_PROCD=1
+CHIPSET=
+
+conf_rule_global() {
+	local cfg="$1"
+	local chipset
+
+	config_get chipset $cfg chipset
+	CHIPSET=$chipset
+
+	if [ "$chipset" = "sx1301" ]; then
+		config_foreach conf_rule_sx1301 "sx1301"
+	fi
+
+	if [ "$chipset" = "sx1302" ]; then
+		config_foreach conf_rule_sx1302 "sx1302"
+	fi
+
+	if [ "$chipset" = "2g4" ]; then
+		config_foreach conf_rule_2g4 "2g4"
+	fi
+}
+
+conf_rule_sx1301() {
+	local cfg="$1"
+	local model region channel_plan gnss gateway_id
+	local model_flags
+
+	config_get model $cfg model
+	config_get region $cfg region
+	config_get channel_plan $cfg channel_plan
+	config_get gnss $cfg gnss
+	config_get gateway_id $cfg gateway_id
+
+	local region_config=$(echo "$region" | awk '{print tolower($0)}')
+
+	if [ "$gnss" = 1 ]; then
+		model_flags="$model_flags\"GNSS\","
+	fi
+
+	cat > /var/etc/chirpstack-concentratord.toml <<- EOF
+		[concentratord]
+			log_level="INFO"
+			log_to_syslog=true
+			stats_interval="30s"
+			disable_crc_filter=false
+
+		[concentratord.api]
+			event_bind="ipc:///tmp/concentratord_event"
+			command_bind="ipc:///tmp/concentratord_command"
+
+		[gateway]
+			lorawan_public=true
+			model="$model"
+			region="$region"
+			gateway_id="$gateway_id"
+			model_flags="$model_flags"
+	EOF
+
+	# Copy channel config
+	cp /etc/chirpstack-concentratord/sx1301/examples/channels_$channel_plan.toml /var/etc/chirpstack-concentratord/channels.toml
+	cp /etc/chirpstack-concentratord/sx1301/examples/region_$region_config.toml /var/etc/chirpstack-concentratord/region.toml
+}
+
+conf_rule_sx1302() {
+	local cfg="$1"
+	local model region channel_plan gnss usb
+	local model_flags
+	local sx1302_reset_pin com_dev_path i2c_dev_path
+
+	config_get model $cfg model
+	config_get region $cfg region
+	config_get channel_plan $cfg channel_plan
+	config_get gnss $cfg gnss
+	config_get usb $cfg usb
+
+	config_get sx1302_reset_pin $cfg sx1302_reset_pin
+	config_get com_dev_path $cfg com_dev_path
+	config_get i2c_dev_path $cfg i2c_dev_path 
+
+	local region_config=$(echo "$region" | awk '{print tolower($0)}')
+
+	if [ "$usb" = 1 ]; then
+		model_flags="$model_flags\"USB\","
+	fi
+
+	if [ "$gnss" = 1 ]; then
+		model_flags="$model_flags\"GNSS\","
+	fi
+
+	cat > /var/etc/chirpstack-concentratord/concentratord.toml <<- EOF
+		[concentratord]
+			log_level="INFO"
+			log_to_syslog=true
+			stats_interval="30s"
+			disable_crc_filter=false
+
+		[concentratord.api]
+			event_bind="ipc:///tmp/concentratord_event"
+			command_bind="ipc:///tmp/concentratord_command"
+
+		[gateway]
+			lorawan_public=true
+			model="$model"
+			region="$region"
+			model_flags=[$model_flags]
+	EOF
+
+	if [ "$sx1302_reset_pin" != "" ]; then
+		echo "sx1302_reset_pin=$sx1302_reset_pin" >> /var/etc/chirpstack-concentratord/concentratord.toml
+	fi
+
+	if [ "$com_dev_path" != "" ]; then
+		echo "com_dev_path=\"$com_dev_path\"" >> /var/etc/chirpstack-concentratord/concentratord.toml
+	fi
+
+	if [ "$i2c_dev_path" != "" ]; then
+		echo "i2c_dev_path=\"$i2c_dev_path\"" >> /var/etc/chirpstack-concentratord/concentratord.toml
+	fi
+
+	# Copy channel config
+	cp /etc/chirpstack-concentratord/sx1302/examples/channels_$channel_plan.toml /var/etc/chirpstack-concentratord/channels.toml
+	cp /etc/chirpstack-concentratord/sx1302/examples/region_$region_config.toml /var/etc/chirpstack-concentratord/region.toml
+}
+
+conf_rule_2g4() {
+	local cfg="$1"
+	local model channel_plan
+
+	config_get model $cfg model
+	config_get region $cfg region
+	config_get channel_plan $cfg channel_plan
+
+	local region_config=$(echo "$region" | awk '{print tolower($0)}')
+
+	cat > /var/etc/chirpstack-concentratord/concentratord.toml <<- EOF
+		[concentratord]
+			log_level="INFO"
+			log_to_syslog=true
+			stats_interval="30s"
+			disable_crc_filter=false
+
+		[concentratord.api]
+			event_bind="ipc:///tmp/concentratord_event"
+			command_bind="ipc:///tmp/concentratord_command"
+
+		[gateway]
+			lorawan_public=true
+			model="$model"
+	EOF
+
+	# Copy channel config
+	cp /etc/chirpstack-concentratord/2g4/examples/channels_$channel_plan.toml /var/etc/chirpstack-concentratord/channels.toml
+	cp /etc/chirpstack-concentratord/2g4/examples/region_$region_config.toml /var/etc/chirpstack-concentratord/region.toml
+}
+
+configuration() {
+	while ! uci get chirpstack-concentratord.@global[0].chipset; do
+		echo "Waiting for chipset configuration"
+		sleep 1                                                                                                                                                                                                               
+	done
+
+	mkdir -p /var/etc/chirpstack-concentratord
+	config_load "chirpstack-concentratord"
+	config_foreach conf_rule_global "global"
+}
+
+start_service() {
+	configuration
+
+	procd_open_instance 
+	procd_set_param command /usr/bin/chirpstack-concentratord-$CHIPSET -c /var/etc/chirpstack-concentratord/concentratord.toml -c /var/etc/chirpstack-concentratord/region.toml -c /var/etc/chirpstack-concentratord/channels.toml
+	procd_set_param respawn 3600 5 -1
+	procd_set_param file /etc/config/chirpstack-concentratord
+	procd_close_instance
+}
+
+service_triggers() {
+	procd_add_reload_trigger "chirpstack-concentratord"
+}
+
+reload_service() {
+	stop
+	start
+}
