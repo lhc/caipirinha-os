@@ -1,6 +1,5 @@
-src-git-full packages https://git.openwrt.org/feed/packages.git^d057936acbefd76b033e7c365baa68b48ccb9166
-src-git-full luci https://git.openwrt.org/project/luci.git^0b38d70fbd47b0c702d5001de623213eb301a6fe
-src-git-full routing https://git.openwrt.org/feed/routing.git^1cc7676b9f32acc30ec47f15fcb70380d5d6ef01
-src-git-full telephony https://git.openwrt.org/feed/telephony.git^36d9f2f962bd0aba2eef674eb265819609ea99ed
-src-git lora https://github.com/lhc/lorawan-feed;master
+src-git packages https://git.openwrt.org/feed/packages.git^0da9f622975aa1e4efe452da4acbae15479bee63
+src-git luci https://git.openwrt.org/project/luci.git^257f54cb8bcd493d9be0a45a3c316668b793e8ae
+src-git routing https://git.openwrt.org/feed/routing.git^2272106e0839ee06957e88e3596489e1b510d3c2
+src-git telephony https://git.openwrt.org/feed/telephony.git^9746ae8f964e18f04b64fbe1956366954ff223f8
 src-link local /usr/local/src/custom_firmware/packages
