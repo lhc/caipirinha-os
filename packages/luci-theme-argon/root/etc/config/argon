@@ -1,9 +1,0 @@
-config global
-	option bing_background '0'
-	option blur '10'
-	option blur_dark '10'
-	option dark_primary '#483D8B'
-  	option pmode 'dark'
-	option primary '#155199'
-	option transparency '0.8'
-	option transparency_dark '0.5'

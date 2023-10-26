@@ -1,12 +1,12 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=chirpstack-concentratord
-PKG_VERSION:=4.3.1
+PKG_VERSION:=4.3.0
 PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/chirpstack/chirpstack-concentratord/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=d68ef6c84f1096ea1f1e06c3bfccfc6d63e79c824c3624f59e45ab7e6157fdc9
+PKG_HASH:=c83a5e8f83aa89719fd6fa5545c7a694ae8d4848e448517abbe8263eb4f3552c
 
 PKG_MAINTAINER:=Orne Brocaar <info@brocaar.com>
 PKG_LICENSE:=MIT
@@ -31,44 +31,8 @@ define Package/chirpstack-concentratord
 	DEPENDS:=+libstdcpp
 endef
 
-define Package/chirpstack-concentratord-2g4
-	SECTION:=chirpstack
-	CATEGORY:=ChirpStack
-	TITLE:=ChirpStack Concentratord (2g4)
-	URL:=https://github.com/chirpstack/chirpstack-concentratord
-	DEPENDS:=+libstdcpp +chirpstack-concentratord
-endef
-
-define Package/chirpstack-concentratord-sx1301
-	SECTION:=chirpstack
-	CATEGORY:=ChirpStack
-	TITLE:=ChirpStack Concentratord (SX1301)
-	URL:=https://github.com/chirpstack/chirpstack-concentratord
-	DEPENDS:=+libstdcpp +chirpstack-concentratord
-endef
-
-define Package/chirpstack-concentratord-sx1302
-	SECTION:=chirpstack
-	CATEGORY:=ChirpStack
-	TITLE:=ChirpStack Concentratord (SX1302/3)
-	URL:=https://github.com/chirpstack/chirpstack-concentratord
-	DEPENDS:=+libstdcpp +chirpstack-concentratord
-endef
-
 define Package/chirpstack-concentratord/description
 	ChirpStack Concentratord
-endef
-
-define Package/chirpstack-concentratord-2g4/description
-	ChirpStack Concentratord (2g4)
-endef
-
-define Package/chirpstack-concentratord-sx1301/description
-	ChirpStack Concentratord (SX1301)
-endef
-
-define Package/chirpstack-concentratord-sx1302/description
-	ChirpStack Concentratord (SX1302/3)
 endef
 
 define Package/chirpstack-concentratord/conffiles
@@ -83,31 +47,14 @@ define Package/chirpstack-concentratord/install
 	$(INSTALL_BIN) ./files/chirpstack-concentratord.init $(1)/etc/init.d/chirpstack-concentratord
 
 	$(INSTALL_DIR) $(1)/usr/bin/
-	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/bin/gateway-id $(1)/usr/bin/
-endef
-
-define Package/chirpstack-concentratord-2g4/install
-	$(INSTALL_DIR) $(1)/usr/bin/
-	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/bin/chirpstack-concentratord-2g4 $(1)/usr/bin/
-
-	$(INSTALL_DIR) $(1)/etc/chirpstack-concentratord/2g4/examples
-	$(INSTALL_DATA) $(PKG_BUILD_DIR)/chirpstack-concentratord-2g4/config/*.toml $(1)/etc/chirpstack-concentratord/2g4/examples/
-endef
-
-define Package/chirpstack-concentratord-sx1301/install
-	$(INSTALL_DIR) $(1)/usr/bin/
-	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/bin/chirpstack-concentratord-sx1301 $(1)/usr/bin/
-
 	$(INSTALL_DIR) $(1)/etc/chirpstack-concentratord/sx1301/examples
-	$(INSTALL_DATA) $(PKG_BUILD_DIR)/chirpstack-concentratord-sx1301/config/*.toml $(1)/etc/chirpstack-concentratord/sx1301/examples/
-endef
-
-define Package/chirpstack-concentratord-sx1302/install
-	$(INSTALL_DIR) $(1)/usr/bin/
-	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/bin/chirpstack-concentratord-sx1302 $(1)/usr/bin/
-
 	$(INSTALL_DIR) $(1)/etc/chirpstack-concentratord/sx1302/examples
+	$(INSTALL_DIR) $(1)/etc/chirpstack-concentratord/2g4/examples
+
+	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/bin/* $(1)/usr/bin/
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/chirpstack-concentratord-sx1301/config/*.toml $(1)/etc/chirpstack-concentratord/sx1301/examples
 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/chirpstack-concentratord-sx1302/config/*.toml $(1)/etc/chirpstack-concentratord/sx1302/examples
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/chirpstack-concentratord-2g4/config/*.toml $(1)/etc/chirpstack-concentratord/2g4/examples
 endef
 
 define Build/Prepare
@@ -130,6 +77,3 @@ endef
 
 $(eval $(call RustBinPackage,chirpstack-concentratord))
 $(eval $(call BuildPackage,chirpstack-concentratord))
-$(eval $(call BuildPackage,chirpstack-concentratord-2g4))
-$(eval $(call BuildPackage,chirpstack-concentratord-sx1301))
-$(eval $(call BuildPackage,chirpstack-concentratord-sx1302))
