@@ -47,7 +47,7 @@ echo ""
 
 if [ -f conf/$APP/.config ];then
 	echo ""
-	echo "***Find customized .config files***"
+	echo "Found customized .config files"
 else 
 	echo ""
 	echo "***Can't find conf/$APP/.config file exiting***"
@@ -57,25 +57,26 @@ fi
 echo "Remove custom files from last build"
 rm -rf $OPENWRT_PATH/files
 
-echo "***Copy general_files to OpenWrt***"
+echo "Copy general_files to OpenWrt"
 cp -r conf/$APP/files $OPENWRT_PATH/files
 
-echo "***.config.$APP to OpenWrt/.config***"
+echo ".config.$APP to OpenWrt/.config"
 cp conf/$APP/.config $OPENWRT_PATH/.config
 
-echo "***Creates symbolic link for patches***"
+echo "Creates symbolic link for patches"
 rm -f conf/patches
 ln -s $APP/patches conf/patches
 
 echo "***Entering build directory***"
 cd $OPENWRT_PATH
+quilt pop -a
 echo "Applying patches"
 quilt push -a
 make defconfig
 echo ""
 
 echo ""
-echo "***Update build version and build date***"
+echo "Update build version and build date"
 echo "Build: $BUILD"
 echo "Build time: $BUILD_TIME"
 echo ""
