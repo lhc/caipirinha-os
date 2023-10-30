@@ -1,0 +1,20 @@
+
+config global
+	option chipset 'sx1302'
+
+config sx1301
+	option model 'imst_ic880a'
+	option region 'EU868'
+	option channel_plan 'eu868'
+	option gateway_id 'e45f01fffeb261cf'
+
+config sx1302
+	option model 'seeed_wm1302'
+	option region 'AU915'
+	option channel_plan 'au915_0'
+
+config 2g4
+	option model 'semtech_sx1280z3dsfgw1'
+	option region 'ISM2400'
+	option channel_plan 'ism2400'
+
