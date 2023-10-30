@@ -1,9 +1,11 @@
+
 config wifi-device 'radio0'
 	option type 'mac80211'
-	option path 'platform/soc/3f300000.mmcnr/mmc_host/mmc1/mmc1:0001/mmc1:0001:1'
-	option channel '1'
-	option band '2g'
-	option htmode 'HT20'
+	option path 'platform/soc/fe300000.mmcnr/mmc_host/mmc1/mmc1:0001/mmc1:0001:1'
+	option channel '36'
+	option band '5g'
+	option htmode 'VHT80'
+	option cell_density '0'
 
 config wifi-iface 'default_radio0'
 	option device 'radio0'
