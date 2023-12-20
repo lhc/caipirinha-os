@@ -1,3 +1,0 @@
-location /apps/node-red {
-    return 302 http://$host:1880;
-}

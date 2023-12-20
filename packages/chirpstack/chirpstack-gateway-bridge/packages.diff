@@ -1,0 +1,1806 @@
+diff --git a/lang/golang/golang-build.sh b/lang/golang/golang-build.sh
+new file mode 100644
+index 0000000..5e40436
+--- /dev/null
++++ b/lang/golang/golang-build.sh
+@@ -0,0 +1,207 @@
++#!/bin/sh
++
++nl="
++"
++
++log() {
++	# shellcheck disable=SC2039
++	local IFS=" "
++	printf '%s\n' "$*"
++}
++
++log_error() {
++	# shellcheck disable=SC2039
++	local IFS=" "
++	printf 'Error: %s\n' "$*" >&2
++}
++
++link_contents() {
++	# shellcheck disable=SC2039
++	local src="$1" dest="$2" IFS="$nl" dirs dir base
++
++	if [ -n "$(find "$src" -mindepth 1 -maxdepth 1 -name "*.go" -not -type d)" ]; then
++		log_error "$src is already a Go library"
++		return 1
++	fi
++
++	dirs="$(find "$src" -mindepth 1 -maxdepth 1 -type d)"
++	for dir in $dirs; do
++		base="${dir##*/}"
++		if [ -d "$dest/$base" ]; then
++			case "$dir" in
++			*$GO_BUILD_DEPENDS_SRC/$GO_PKG)
++				log "$GO_PKG is already installed. Please check for circular dependencies."
++				;;
++			*)
++				link_contents "$src/$base" "$dest/$base"
++				;;
++			esac
++		else
++			log "...${src#$GO_BUILD_DEPENDS_SRC}/$base"
++			ln -sf "$src/$base" "$dest/$base"
++		fi
++	done
++
++	return 0
++}
++
++configure() {
++	# shellcheck disable=SC2039
++	local files code testdata gomod pattern extra IFS file dest
++
++	cd "$BUILD_DIR" || return 1
++
++	files="$(find ./ -path "*/.*" -prune -o -not -type d -print)"
++
++	if [ "$GO_INSTALL_ALL" != 1 ]; then
++		code="$(printf '%s\n' "$files" | grep '\.\(c\|cc\|cpp\|go\|h\|hh\|hpp\|proto\|s\)$')"
++		testdata="$(printf '%s\n' "$files" | grep '/testdata/')"
++		gomod="$(printf '%s\n' "$files" | grep '/go\.\(mod\|sum\)$')"
++
++		for pattern in $GO_INSTALL_EXTRA; do
++			extra="$(printf '%s\n' "$extra"; printf '%s\n' "$files" | grep -e "$pattern")"
++		done
++
++		files="$(printf '%s\n%s\n%s\n%s\n' "$code" "$testdata" "$gomod" "$extra" | grep -v '^[[:space:]]*$' | sort -u)"
++	fi
++
++	IFS="$nl"
++
++	log "Copying files from $BUILD_DIR into $GO_BUILD_DIR/src/$GO_PKG"
++	mkdir -p "$GO_BUILD_DIR/src"
++	for file in $files; do
++		log "${file#./}"
++		dest="$GO_BUILD_DIR/src/$GO_PKG/${file#./}"
++		mkdir -p "${dest%/*}"
++		cp -fpR "$file" "$dest"
++	done
++	log
++
++	if [ "$GO_SOURCE_ONLY" != 1 ]; then
++		if [ -d "$GO_BUILD_DEPENDS_SRC" ]; then
++			log "Symlinking directories from $GO_BUILD_DEPENDS_SRC into $GO_BUILD_DIR/src"
++			link_contents "$GO_BUILD_DEPENDS_SRC" "$GO_BUILD_DIR/src"
++		else
++			log "$GO_BUILD_DEPENDS_SRC does not exist, skipping symlinks"
++		fi
++	else
++		log "Not building binaries, skipping symlinks"
++	fi
++	log
++
++	return 0
++}
++
++build() {
++	# shellcheck disable=SC2039
++	local modargs pattern targets retval
++
++	cd "$GO_BUILD_DIR" || return 1
++
++	if [ -f "$BUILD_DIR/go.mod" ] ; then
++		mkdir -p "$GO_MOD_CACHE_DIR"
++		modargs="$GO_MOD_ARGS"
++	fi
++	log "Install missing packages for chirpstack"
++	go mod download github.com/sagikazarmark/crypt
++	go get github.com/prometheus/client_golang/prometheus@v1.14.0
++
++	log "Finding targets"
++	# shellcheck disable=SC2086
++	targets="$(go list $modargs $GO_BUILD_PKG)"
++	for pattern in $GO_EXCLUDES; do
++		targets="$(printf '%s\n' "$targets" | grep -v "$pattern")"
++	done
++	log
++
++	if [ "$GO_GO_GENERATE" = 1 ]; then
++		log "Calling go generate"
++		# shellcheck disable=SC2086
++		GOOS='' GOARCH='' GO386='' GOARM='' GOMIPS='' GOMIPS64='' \
++		go generate -v $targets
++		log
++	fi
++
++	if [ "$GO_SOURCE_ONLY" = 1 ]; then
++		return 0
++	fi
++
++	log "Building targets"
++	mkdir -p "$GO_BUILD_DIR/bin" "$GO_BUILD_CACHE_DIR"
++	# shellcheck disable=SC2086
++	go install $modargs "$@" $targets
++	retval="$?"
++	log
++
++	if [ "$retval" -eq 0 ] && [ -z "$(find "$GO_BUILD_BIN_DIR" -maxdepth 0 -type d -not -empty 2>/dev/null)" ]; then
++		log_error "No binaries were built"
++		retval=1
++	fi
++
++	if [ "$retval" -ne 0 ]; then
++		cache_cleanup
++	fi
++
++	return "$retval"
++}
++
++install_bin() {
++	# shellcheck disable=SC2039
++	local dest="$1"
++	install -d -m0755 "$dest/$GO_INSTALL_BIN_PATH"
++	install -m0755 "$GO_BUILD_BIN_DIR"/* "$dest/$GO_INSTALL_BIN_PATH/"
++}
++
++install_src() {
++	# shellcheck disable=SC2039
++	local dest="$1" dir="${GO_PKG%/*}"
++	install -d -m0755 "$dest/$GO_BUILD_DEPENDS_PATH/src/$dir"
++	cp -fpR "$GO_BUILD_DIR/src/$GO_PKG" "$dest/$GO_BUILD_DEPENDS_PATH/src/$dir/"
++}
++
++cache_cleanup() {
++	if ! [ -d "$GO_MOD_CACHE_DIR" ]; then
++		return 0
++	fi
++
++	# in case go is called without -modcacherw
++	find "$GO_MOD_CACHE_DIR" -type d -not -perm -u+w -exec chmod u+w '{}' +
++
++	if [ -n "$CONFIG_GOLANG_MOD_CACHE_WORLD_READABLE" ]; then
++		find "$GO_MOD_CACHE_DIR"      -type d -not -perm -go+rx -exec chmod go+rx '{}' +
++		find "$GO_MOD_CACHE_DIR" -not -type d -not -perm -go+r  -exec chmod go+r  '{}' +
++	fi
++
++	return 0
++}
++
++
++if [ "$#" -lt 1 ]; then
++	log_error "Missing command"
++	exit 1
++fi
++
++command="$1"
++shift 1
++
++case "$command" in
++	configure)
++		configure
++		;;
++	build)
++		build "$@"
++		;;
++	install_bin)
++		install_bin "$@"
++		;;
++	install_src)
++		install_src "$@"
++		;;
++	cache_cleanup)
++		cache_cleanup
++		;;
++	*)
++		log_error "Invalid command \"$command\""
++		exit 1
++		;;
++esac
+diff --git a/lang/golang/golang-compiler.mk b/lang/golang/golang-compiler.mk
+index 5e7fe68..e8b4b91 100644
+--- a/lang/golang/golang-compiler.mk
++++ b/lang/golang/golang-compiler.mk
+@@ -1,5 +1,5 @@
+ #
+-# Copyright (C) 2018 Jeffery To
++# Copyright (C) 2018, 2020 Jeffery To
+ #
+ # This is free software, licensed under the GNU General Public License v2.
+ # See /LICENSE for more information.
+@@ -24,8 +24,8 @@ endef
+ # $(4) additional environment variables (optional)
+ define GoCompiler/Default/Make
+ 	( \
+-		cd $(1)/src ; \
+-		$(if $(2),GOROOT_FINAL=$(2)/lib/go-$(3)) \
++		cd "$(1)/src" ; \
++		$(if $(2),GOROOT_FINAL="$(2)/lib/go-$(3)") \
+ 		$(4) \
+ 		$(BASH) make.bash --no-banner ; \
+ 	)
+@@ -34,8 +34,8 @@ endef
+ # $(1) destination prefix
+ # $(2) go version id
+ define GoCompiler/Default/Install/make-dirs
+-	$(INSTALL_DIR) $(1)/lib/go-$(2)
+-	$(INSTALL_DIR) $(1)/share/go-$(2)
++	$(INSTALL_DIR) "$(1)/lib/go-$(2)"
++	$(INSTALL_DIR) "$(1)/share/go-$(2)"
+ endef
+ 
+ # $(1) source go root
+@@ -43,48 +43,49 @@ endef
+ # $(3) go version id
+ # $(4) file/directory name
+ define GoCompiler/Default/Install/install-share-data
+-	$(CP) $(1)/$(4) $(2)/share/go-$(3)/
+-	$(LN) ../../share/go-$(3)/$(4) $(2)/lib/go-$(3)/
++	$(CP) "$(1)/$(4)" "$(2)/share/go-$(3)/"
++	$(LN) "../../share/go-$(3)/$(4)" "$(2)/lib/go-$(3)/"
+ endef
+ 
+ # $(1) source go root
+ # $(2) destination prefix
+ # $(3) go version id
+ # $(4) GOOS_GOARCH
++# $(5) install suffix (optional)
+ define GoCompiler/Default/Install/Bin
+ 	$(call GoCompiler/Default/Install/make-dirs,$(2),$(3))
+ 
+ 	$(call GoCompiler/Default/Install/install-share-data,$(1),$(2),$(3),api)
+ 
+-	$(INSTALL_DATA) -p $(1)/VERSION $(2)/lib/go-$(3)/
++	$(INSTALL_DATA) -p "$(1)/VERSION" "$(2)/lib/go-$(3)/"
+ 
+-	for file in AUTHORS CONTRIBUTING.md CONTRIBUTORS LICENSE PATENTS README README.md; do \
+-		if [ -f $(1)/$$$$file ]; then \
+-			$(INSTALL_DATA) -p $(1)/$$$$file $(2)/share/go-$(3)/ ; \
++	for file in AUTHORS CONTRIBUTING.md CONTRIBUTORS LICENSE PATENTS README.md SECURITY.md; do \
++		if [ -f "$(1)/$$$$file" ]; then \
++			$(INSTALL_DATA) -p "$(1)/$$$$file" "$(2)/share/go-$(3)/" ; \
+ 		fi ; \
+ 	done
+ 
+-	$(INSTALL_DIR) $(2)/lib/go-$(3)/bin
++	$(INSTALL_DIR) "$(2)/lib/go-$(3)/bin"
+ 
+   ifeq ($(4),$(GO_HOST_OS_ARCH))
+-	$(INSTALL_BIN) -p $(1)/bin/* $(2)/lib/go-$(3)/bin/
++	$(INSTALL_BIN) -p "$(1)/bin"/* "$(2)/lib/go-$(3)/bin/"
+   else
+-	$(INSTALL_BIN) -p $(1)/bin/$(4)/* $(2)/lib/go-$(3)/bin/
++	$(INSTALL_BIN) -p "$(1)/bin/$(4)"/* "$(2)/lib/go-$(3)/bin/"
+   endif
+ 
+-	$(INSTALL_DIR) $(2)/lib/go-$(3)/pkg
+-	$(CP) $(1)/pkg/$(4) $(2)/lib/go-$(3)/pkg/
++	$(INSTALL_DIR) "$(2)/lib/go-$(3)/pkg"
++	$(CP) "$(1)/pkg/$(4)$(if $(5),_$(5))" "$(2)/lib/go-$(3)/pkg/"
+ 
+-	$(INSTALL_DIR) $(2)/lib/go-$(3)/pkg/tool/$(4)
+-	$(INSTALL_BIN) -p $(1)/pkg/tool/$(4)/* $(2)/lib/go-$(3)/pkg/tool/$(4)/
++	$(INSTALL_DIR) "$(2)/lib/go-$(3)/pkg/tool/$(4)"
++	$(INSTALL_BIN) -p "$(1)/pkg/tool/$(4)"/* "$(2)/lib/go-$(3)/pkg/tool/$(4)/"
+ endef
+ 
+ # $(1) destination prefix
+ # $(2) go version id
+ define GoCompiler/Default/Install/BinLinks
+-	$(INSTALL_DIR) $(1)/bin
+-	$(LN) ../lib/go-$(2)/bin/go $(1)/bin/go
+-	$(LN) ../lib/go-$(2)/bin/gofmt $(1)/bin/gofmt
++	$(INSTALL_DIR) "$(1)/bin"
++	$(LN) "../lib/go-$(2)/bin/go" "$(1)/bin/go"
++	$(LN) "../lib/go-$(2)/bin/gofmt" "$(1)/bin/gofmt"
+ endef
+ 
+ # $(1) source go root
+@@ -110,29 +111,29 @@ define GoCompiler/Default/Install/Src
+ 	$(call GoCompiler/Default/Install/install-share-data,$(1),$(2),$(3),test)
+ 
+ 	$(FIND) \
+-		$(2)/share/go-$(3)/src/ \
+-		\! -type d -a \( -name '*.bat' -o -name '*.rc' \) \
++		"$(2)/share/go-$(3)/src/" \
++		\! -type d -a \( -name "*.bat" -o -name "*.rc" \) \
+ 		-delete
+ 
+-	if [ -d $(1)/pkg/include ]; then \
+-		$(INSTALL_DIR) $(2)/lib/go-$(3)/pkg ; \
+-		$(INSTALL_DIR) $(2)/share/go-$(3)/pkg ; \
+-		$(CP) $(1)/pkg/include $(2)/share/go-$(3)/pkg/ ; \
+-		$(LN) ../../../share/go-$(3)/pkg/include $(2)/lib/go-$(3)/pkg/ ; \
++	if [ -d "$(1)/pkg/include" ]; then \
++		$(INSTALL_DIR) "$(2)/lib/go-$(3)/pkg" ; \
++		$(INSTALL_DIR) "$(2)/share/go-$(3)/pkg" ; \
++		$(CP) "$(1)/pkg/include" "$(2)/share/go-$(3)/pkg/" ; \
++		$(LN) "../../../share/go-$(3)/pkg/include" "$(2)/lib/go-$(3)/pkg/" ; \
+ 	fi
+ endef
+ 
+ # $(1) destination prefix
+ # $(2) go version id
+ define GoCompiler/Default/Uninstall
+-	rm -rf $(1)/lib/go-$(2)
+-	rm -rf $(1)/share/go-$(2)
++	rm -rf "$(1)/lib/go-$(2)"
++	rm -rf "$(1)/share/go-$(2)"
+ endef
+ 
+ # $(1) destination prefix
+ define GoCompiler/Default/Uninstall/BinLinks
+-	rm -f $(1)/bin/go
+-	rm -f $(1)/bin/gofmt
++	rm -f "$(1)/bin/go"
++	rm -f "$(1)/bin/gofmt"
+ endef
+ 
+ 
+@@ -141,6 +142,7 @@ endef
+ # $(3) destination prefix
+ # $(4) go version id
+ # $(5) GOOS_GOARCH
++# $(6) install suffix (optional)
+ define GoCompiler/AddProfile
+ 
+   # $$(1) valid GOOS_GOARCH combinations
+@@ -155,7 +157,7 @@ define GoCompiler/AddProfile
+ 
+   # $$(1) override install prefix (optional)
+   define GoCompiler/$(1)/Install/Bin
+-	$$(call GoCompiler/Default/Install/Bin,$(2),$$(or $$(1),$(3)),$(4),$(5))
++	$$(call GoCompiler/Default/Install/Bin,$(2),$$(or $$(1),$(3)),$(4),$(5),$(6))
+   endef
+ 
+   # $$(1) override install prefix (optional)
+diff --git a/lang/golang/golang-host-build.mk b/lang/golang/golang-host-build.mk
+new file mode 100644
+index 0000000..ee4f1ea
+--- /dev/null
++++ b/lang/golang/golang-host-build.mk
+@@ -0,0 +1,220 @@
++#
++# Copyright (C) 2020 Jeffery To
++#
++# This is free software, licensed under the GNU General Public License v2.
++# See /LICENSE for more information.
++#
++
++ifeq ($(origin GO_INCLUDE_DIR),undefined)
++  GO_INCLUDE_DIR:=$(dir $(lastword $(MAKEFILE_LIST)))
++endif
++
++include $(GO_INCLUDE_DIR)/golang-values.mk
++
++
++# these variables have the same meanings as in golang-package.mk
++GO_HOST_INSTALL_EXTRA?=$(GO_PKG_INSTALL_EXTRA)
++GO_HOST_INSTALL_ALL?=$(GO_PKG_INSTALL_ALL)
++GO_HOST_SOURCE_ONLY?=$(GO_PKG_SOURCE_ONLY)
++GO_HOST_BUILD_PKG?=$(GO_PKG_BUILD_PKG)
++GO_HOST_EXCLUDES?=$(GO_PKG_EXCLUDES)
++GO_HOST_GO_GENERATE?=$(GO_PKG_GO_GENERATE)
++GO_HOST_GCFLAGS?=$(GO_PKG_GCFLAGS)
++GO_HOST_LDFLAGS?=$(GO_PKG_LDFLAGS)
++GO_HOST_LDFLAGS_X?=$(GO_PKG_LDFLAGS_X)
++GO_HOST_TAGS?=$(GO_PKG_TAGS)
++GO_HOST_INSTALL_BIN_PATH?=/bin
++
++
++# need to repeat this here in case golang-package.mk is not included
++GO_PKG_BUILD_PKG?=$(strip $(GO_PKG))/...
++
++GO_HOST_WORK_DIR_NAME:=.go_work
++GO_HOST_BUILD_DIR=$(HOST_BUILD_DIR)/$(GO_HOST_WORK_DIR_NAME)/build
++GO_HOST_BUILD_BIN_DIR=$(GO_HOST_BUILD_DIR)/bin
++
++GO_HOST_BUILD_DEPENDS_PATH:=/share/gocode
++GO_HOST_BUILD_DEPENDS_SRC=$(STAGING_DIR_HOSTPKG)$(GO_HOST_BUILD_DEPENDS_PATH)/src
++
++GO_HOST_DIR_NAME:=$(lastword $(subst /,$(space),$(CURDIR)))
++GO_HOST_STAGING_DIR:=$(TMP_DIR)/host-stage-$(GO_HOST_DIR_NAME)
++GO_HOST_STAGING_FILES_LIST_DIR:=$(HOST_BUILD_PREFIX)/stamp
++GO_HOST_BIN_STAGING_FILES_LIST:=$(GO_HOST_STAGING_FILES_LIST_DIR)/$(GO_HOST_DIR_NAME)-bin.list
++GO_HOST_SRC_STAGING_FILES_LIST:=$(GO_HOST_STAGING_FILES_LIST_DIR)/$(GO_HOST_DIR_NAME)-src.list
++
++ifeq ($(GO_HOST_PIE_SUPPORTED),1)
++  GO_HOST_ENABLE_PIE:=1
++endif
++
++GO_HOST_BUILD_CONFIG_VARS= \
++	GO_PKG="$(strip $(GO_PKG))" \
++	GO_INSTALL_EXTRA="$(strip $(GO_HOST_INSTALL_EXTRA))" \
++	GO_INSTALL_ALL="$(strip $(GO_HOST_INSTALL_ALL))" \
++	GO_SOURCE_ONLY="$(strip $(GO_HOST_SOURCE_ONLY))" \
++	GO_BUILD_PKG="$(strip $(GO_HOST_BUILD_PKG))" \
++	GO_EXCLUDES="$(strip $(GO_HOST_EXCLUDES))" \
++	GO_GO_GENERATE="$(strip $(GO_HOST_GO_GENERATE))" \
++	GO_INSTALL_BIN_PATH="$(strip $(GO_HOST_INSTALL_BIN_PATH))" \
++	BUILD_DIR="$(HOST_BUILD_DIR)" \
++	GO_BUILD_DIR="$(GO_HOST_BUILD_DIR)" \
++	GO_BUILD_BIN_DIR="$(GO_HOST_BUILD_BIN_DIR)" \
++	GO_BUILD_DEPENDS_PATH="$(GO_HOST_BUILD_DEPENDS_PATH)" \
++	GO_BUILD_DEPENDS_SRC="$(GO_HOST_BUILD_DEPENDS_SRC)"
++
++GO_HOST_MORE_CFLAGS?= \
++	-Wformat -Werror=format-security \
++	-fstack-protector-strong \
++	-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2 \
++	-Wl,-z,now -Wl,-z,relro \
++	$(if $(GO_HOST_ENABLE_PIE),$(FPIC))
++
++GO_HOST_MORE_LDFLAGS?= \
++	-znow -zrelro \
++	$(if $(GO_HOST_ENABLE_PIE),$(FPIC) -specs=$(INCLUDE_DIR)/hardened-ld-pie.specs)
++
++GO_HOST_TARGET_VARS= \
++	CGO_ENABLED=1 \
++	CC=gcc \
++	CXX=g++ \
++	PKG_CONFIG=pkg-config \
++	CGO_CFLAGS="$(HOST_CFLAGS) $(GO_HOST_MORE_CFLAGS)" \
++	CGO_CPPFLAGS="$(HOST_CPPFLAGS) $(GO_HOST_MORE_CPPFLAGS)" \
++	CGO_CXXFLAGS="$(HOST_CFLAGS) $(GO_HOST_MORE_CFLAGS)" \
++	CGO_LDFLAGS="$(HOST_LDFLAGS) $(GO_HOST_MORE_LDFLAGS)" \
++	GO_GCC_HELPER_CC="$(HOSTCC)" \
++	GO_GCC_HELPER_CXX="$(HOSTCXX)" \
++	GO_GCC_HELPER_PATH="$$$$PATH" \
++	PATH="$(STAGING_DIR_HOSTPKG)/lib/go-cross/openwrt:$$$$PATH"
++
++GO_HOST_BUILD_VARS= \
++	GOPATH="$(GO_HOST_BUILD_DIR)" \
++	GOCACHE="$(GO_BUILD_CACHE_DIR)" \
++	GOMODCACHE="$(GO_MOD_CACHE_DIR)" \
++	GOENV=off
++
++GO_HOST_VARS= \
++	$(GO_HOST_TARGET_VARS) \
++	$(GO_HOST_BUILD_VARS)
++
++GO_HOST_DEFAULT_LDFLAGS= \
++	-linkmode external \
++	-extldflags '$(patsubst -z%,-Wl$(comma)-z$(comma)%,$(HOST_LDFLAGS) $(GO_HOST_MORE_LDFLAGS))'
++
++GO_HOST_CUSTOM_LDFLAGS= \
++	$(GO_HOST_LDFLAGS) \
++	$(patsubst %,-X %,$(GO_HOST_LDFLAGS_X))
++
++GO_HOST_INSTALL_ARGS= \
++	-v \
++	-ldflags "all=$(GO_HOST_DEFAULT_LDFLAGS)" \
++	$(if $(filter $(GO_HOST_ENABLE_PIE),1),-buildmode pie) \
++	$(if $(GO_HOST_GCFLAGS),-gcflags "$(GO_HOST_GCFLAGS)") \
++	$(if $(GO_HOST_CUSTOM_LDFLAGS),-ldflags "$(GO_HOST_CUSTOM_LDFLAGS) $(GO_HOST_DEFAULT_LDFLAGS)") \
++	$(if $(GO_HOST_TAGS),-tags "$(GO_HOST_TAGS)")
++
++define GoHost/Host/Configure
++	$(GO_GENERAL_BUILD_CONFIG_VARS) \
++	$(GO_HOST_BUILD_CONFIG_VARS) \
++	$(SHELL) $(GO_INCLUDE_DIR)/golang-build.sh configure
++endef
++
++# $(1) additional arguments for go command line (optional)
++define GoHost/Host/Compile
++	$(GO_GENERAL_BUILD_CONFIG_VARS) \
++	$(GO_HOST_BUILD_CONFIG_VARS) \
++	$(GO_HOST_VARS) \
++	$(SHELL) $(GO_INCLUDE_DIR)/golang-build.sh build $(GO_HOST_INSTALL_ARGS) $(1)
++endef
++
++define GoHost/Host/Install/Bin
++	rm -rf "$(GO_HOST_STAGING_DIR)"
++	mkdir -p "$(GO_HOST_STAGING_DIR)" "$(GO_HOST_STAGING_FILES_LIST_DIR)"
++
++	$(GO_GENERAL_BUILD_CONFIG_VARS) \
++	$(GO_HOST_BUILD_CONFIG_VARS) \
++	$(SHELL) $(GO_INCLUDE_DIR)/golang-build.sh install_bin "$(GO_HOST_STAGING_DIR)"
++
++	if [ -f "$(GO_HOST_BIN_STAGING_FILES_LIST)" ]; then \
++		"$(SCRIPT_DIR)/clean-package.sh" \
++			"$(GO_HOST_BIN_STAGING_FILES_LIST)" \
++			"$(1)" ; \
++	fi
++
++	cd "$(GO_HOST_STAGING_DIR)" && find ./ > "$(GO_HOST_STAGING_DIR).files"
++
++	$(call locked, \
++		mv "$(GO_HOST_STAGING_DIR).files" "$(GO_HOST_BIN_STAGING_FILES_LIST)" && \
++		$(CP) "$(GO_HOST_STAGING_DIR)"/* "$(1)/", \
++		host-staging-dir \
++	)
++
++	rm -rf "$(GO_HOST_STAGING_DIR)"
++endef
++
++define GoHost/Host/Install/Src
++	rm -rf "$(GO_HOST_STAGING_DIR)"
++	mkdir -p "$(GO_HOST_STAGING_DIR)" "$(GO_HOST_STAGING_FILES_LIST_DIR)"
++
++	$(GO_GENERAL_BUILD_CONFIG_VARS) \
++	$(GO_HOST_BUILD_CONFIG_VARS) \
++	$(SHELL) $(GO_INCLUDE_DIR)/golang-build.sh install_src "$(GO_HOST_STAGING_DIR)"
++
++	if [ -f "$(GO_HOST_SRC_STAGING_FILES_LIST)" ]; then \
++		"$(SCRIPT_DIR)/clean-package.sh" \
++			"$(GO_HOST_SRC_STAGING_FILES_LIST)" \
++			"$(1)" ; \
++	fi
++
++	cd "$(GO_HOST_STAGING_DIR)" && find ./ > "$(GO_HOST_STAGING_DIR).files"
++
++	$(call locked, \
++		mv "$(GO_HOST_STAGING_DIR).files" "$(GO_HOST_SRC_STAGING_FILES_LIST)" && \
++		$(CP) "$(GO_HOST_STAGING_DIR)"/* "$(1)/", \
++		host-staging-dir \
++	)
++
++	rm -rf "$(GO_HOST_STAGING_DIR)"
++endef
++
++define GoHost/Host/Install
++	$(if $(filter $(GO_HOST_SOURCE_ONLY),1),, \
++		$(call GoHost/Host/Install/Bin,$(1)) \
++	)
++	$(call GoHost/Host/Install/Src,$(1))
++endef
++
++define GoHost/Host/Uninstall
++	if [ -f "$(GO_HOST_BIN_STAGING_FILES_LIST)" ]; then \
++		"$(SCRIPT_DIR)/clean-package.sh" \
++			"$(GO_HOST_BIN_STAGING_FILES_LIST)" \
++			"$(HOST_BUILD_PREFIX)" ; \
++		rm -f "$(GO_HOST_BIN_STAGING_FILES_LIST)" ; \
++	fi
++
++	if [ -f "$(GO_HOST_SRC_STAGING_FILES_LIST)" ]; then \
++		"$(SCRIPT_DIR)/clean-package.sh" \
++			"$(GO_HOST_SRC_STAGING_FILES_LIST)" \
++			"$(HOST_BUILD_PREFIX)" ; \
++		rm -f "$(GO_HOST_SRC_STAGING_FILES_LIST)" ; \
++	fi
++endef
++
++
++ifneq ($(strip $(GO_PKG)),)
++  Host/Configure=$(call GoHost/Host/Configure)
++  Host/Compile=$(call GoHost/Host/Compile)
++  Hooks/HostCompile/Post+=Go/CacheCleanup
++  Host/Uninstall=$(call GoHost/Host/Uninstall,$(1))
++endif
++
++define GoHostBuild
++  Host/Install=$$(call GoHost/Host/Install,$$(1))
++endef
++
++define GoBinHostBuild
++  Host/Install=$$(call GoHost/Host/Install/Bin,$$(1))
++endef
++
++define GoSrcHostBuild
++  Host/Install=$$(call GoHost/Host/Install/Src,$$(1))
++endef
+diff --git a/lang/golang/golang-package.mk b/lang/golang/golang-package.mk
+index 3c4aeab..7144a45 100644
+--- a/lang/golang/golang-package.mk
++++ b/lang/golang/golang-package.mk
+@@ -1,5 +1,5 @@
+ #
+-# Copyright (C) 2018 Jeffery To
++# Copyright (C) 2018-2020 Jeffery To
+ #
+ # This is free software, licensed under the GNU General Public License v2.
+ # See /LICENSE for more information.
+@@ -28,10 +28,12 @@ include $(GO_INCLUDE_DIR)/golang-values.mk
+ #   files are installed:
+ #
+ #   * Files with one of these extensions:
+-#     .go, .c, .cc, .h, .hh, .proto, .s
++#     .go, .c, .cc, .cpp, .h, .hh, .hpp, .proto, .s
+ #
+ #   * Files in any 'testdata' directory
+ #
++#   * go.mod and go.sum, in any directory
++#
+ #   e.g. GO_PKG_INSTALL_EXTRA:=example.toml marshal_test.toml
+ #
+ #
+@@ -54,7 +56,7 @@ include $(GO_INCLUDE_DIR)/golang-values.mk
+ # GO_PKG_BUILD_PKG - list of build targets, default GO_PKG/...
+ #
+ #   Build targets for compiling this Go package, i.e. arguments passed
+-#   to 'go install'
++#   to 'go install'.
+ #
+ #   e.g. GO_PKG_BUILD_PKG:=github.com/debian/ratt/cmd/...
+ #
+@@ -74,28 +76,92 @@ include $(GO_INCLUDE_DIR)/golang-values.mk
+ #   not necessary.
+ #
+ #   e.g. GO_PKG_GO_GENERATE:=1
++#
++#
++# GO_PKG_GCFLAGS - list of options, default empty
++#
++#   Additional go tool compile options to use when building targets.
++#
++#   e.g. GO_PKG_GCFLAGS:=-N -l
++#
++#
++# GO_PKG_LDFLAGS - list of options, default empty
++#
++#   Additional go tool link options to use when building targets.
++#
++#   Note that the OpenWrt build system has an option to strip binaries
++#   (enabled by default), so -s (Omit the symbol table and debug
++#   information) and -w (Omit the DWARF symbol table) flags are not
++#   necessary.
++#
++#   e.g. GO_PKG_LDFLAGS:=-r dir1:dir2 -u
++#
++#
++# GO_PKG_LDFLAGS_X - list of string variable definitions, default empty
++#
++#   Each definition will be passed as the parameter to the -X go tool
++#   link option, i.e. -ldflags "-X importpath.name=value".
++#
++#   e.g. GO_PKG_LDFLAGS_X:=main.Version=$(PKG_VERSION) main.BuildStamp=$(SOURCE_DATE_EPOCH)
++#
++#
++# GO_PKG_TAGS - list of build tags, default empty
++#
++#   Build tags to consider satisfied during the build, passed as the
++#   parameter to the -tags option for 'go install'.
++#
++#   e.g. GO_PKG_TAGS:=release,noupgrade
++#
++#
++# GO_PKG_INSTALL_BIN_PATH - target directory path, default /usr/bin
++#
++#   Directory path under "dest_dir" where binaries will be installed by
++#   '$(call GoPackage/Package/Install/Bin,dest_dir)'.
++#
++#   e.g. GO_PKG_INSTALL_BIN_PATH:=/sbin
+ 
+ # Credit for this package build process (GoPackage/Build/Configure and
+ # GoPackage/Build/Compile) belong to Debian's dh-golang completely.
+-# https://anonscm.debian.org/cgit/pkg-go/packages/dh-golang.git
+-
++# https://salsa.debian.org/go-team/packages/dh-golang
+ 
+-# for building packages, not user code
+-GO_PKG_PATH:=/usr/share/gocode
+ 
+-GO_PKG_BUILD_PKG?=$(GO_PKG)/...
++GO_PKG_BUILD_PKG?=$(strip $(GO_PKG))/...
++GO_PKG_INSTALL_BIN_PATH?=/usr/bin
+ 
+ GO_PKG_WORK_DIR_NAME:=.go_work
+-GO_PKG_WORK_DIR:=$(PKG_BUILD_DIR)/$(GO_PKG_WORK_DIR_NAME)
++GO_PKG_BUILD_DIR=$(PKG_BUILD_DIR)/$(GO_PKG_WORK_DIR_NAME)/build
++GO_PKG_BUILD_BIN_DIR=$(GO_PKG_BUILD_DIR)/bin$(if $(GO_HOST_TARGET_DIFFERENT),/$(GO_OS_ARCH))
+ 
+-GO_PKG_BUILD_DIR:=$(GO_PKG_WORK_DIR)/build
+-GO_PKG_CACHE_DIR:=$(GO_PKG_WORK_DIR)/cache
+-GO_PKG_TMP_DIR:=$(GO_PKG_WORK_DIR)/tmp
++GO_PKG_BUILD_DEPENDS_PATH:=/usr/share/gocode
++GO_PKG_BUILD_DEPENDS_SRC=$(STAGING_DIR)$(GO_PKG_BUILD_DEPENDS_PATH)/src
+ 
+-GO_PKG_BUILD_BIN_DIR:=$(GO_PKG_BUILD_DIR)/bin$(if \
+-  $(GO_HOST_TARGET_DIFFERENT),/$(GO_OS)_$(GO_ARCH))
++ifdef CONFIG_PKG_ASLR_PIE_ALL
++  ifeq ($(strip $(PKG_ASLR_PIE)),1)
++    ifeq ($(GO_TARGET_PIE_SUPPORTED),1)
++      GO_PKG_ENABLE_PIE:=1
++    else
++      $(warning PIE buildmode is not supported for $(GO_OS)/$(GO_ARCH))
++    endif
++  endif
++endif
++
++ifdef CONFIG_PKG_ASLR_PIE_REGULAR
++  ifeq ($(strip $(PKG_ASLR_PIE_REGULAR)),1)
++    ifeq ($(GO_TARGET_PIE_SUPPORTED),1)
++      GO_PKG_ENABLE_PIE:=1
++    else
++      $(warning PIE buildmode is not supported for $(GO_OS)/$(GO_ARCH))
++    endif
++  endif
++endif
+ 
+-GO_PKG_BUILD_DEPENDS_SRC:=$(STAGING_DIR)$(GO_PKG_PATH)/src
++ifdef CONFIG_GOLANG_SPECTRE
++  ifeq ($(GO_TARGET_SPECTRE_SUPPORTED),1)
++    GO_PKG_ENABLE_SPECTRE:=1
++  else
++    $(warning Spectre mitigations are not supported for $(GO_ARCH))
++  endif
++endif
+ 
+ # sstrip causes corrupted section header size
+ ifneq ($(CONFIG_USE_SSTRIP),)
+@@ -105,16 +171,6 @@ ifneq ($(CONFIG_USE_SSTRIP),)
+     GO_PKG_STRIP_ARGS:=--strip-all
+   endif
+   STRIP:=$(TARGET_CROSS)strip $(GO_PKG_STRIP_ARGS)
+-  RSTRIP= \
+-    export CROSS="$(TARGET_CROSS)" \
+-		$(if $(PKG_BUILD_ID),KEEP_BUILD_ID=1) \
+-		$(if $(CONFIG_KERNEL_KALLSYMS),NO_RENAME=1) \
+-		$(if $(CONFIG_KERNEL_PROFILING),KEEP_SYMBOLS=1); \
+-    NM="$(TARGET_CROSS)nm" \
+-    STRIP="$(STRIP)" \
+-    STRIP_KMOD="$(SCRIPT_DIR)/strip-kmod.sh" \
+-    PATCHELF="$(STAGING_DIR_HOST)/bin/patchelf" \
+-    $(SCRIPT_DIR)/rstrip.sh
+ endif
+ 
+ define GoPackage/GoSubMenu
+@@ -123,138 +179,87 @@ define GoPackage/GoSubMenu
+   CATEGORY:=Languages
+ endef
+ 
+-define GoPackage/Environment
+-	GOOS=$(GO_OS) \
+-	GOARCH=$(GO_ARCH) \
+-	GO386=$(GO_386) \
+-	GOARM=$(GO_ARM) \
+-	GOMIPS=$(GO_MIPS) \
++GO_PKG_BUILD_CONFIG_VARS= \
++	GO_PKG="$(strip $(GO_PKG))" \
++	GO_INSTALL_EXTRA="$(strip $(GO_PKG_INSTALL_EXTRA))" \
++	GO_INSTALL_ALL="$(strip $(GO_PKG_INSTALL_ALL))" \
++	GO_SOURCE_ONLY="$(strip $(GO_PKG_SOURCE_ONLY))" \
++	GO_BUILD_PKG="$(strip $(GO_PKG_BUILD_PKG))" \
++	GO_EXCLUDES="$(strip $(GO_PKG_EXCLUDES))" \
++	GO_GO_GENERATE="$(strip $(GO_PKG_GO_GENERATE))" \
++	GO_INSTALL_BIN_PATH="$(strip $(GO_PKG_INSTALL_BIN_PATH))" \
++	BUILD_DIR="$(PKG_BUILD_DIR)" \
++	GO_BUILD_DIR="$(GO_PKG_BUILD_DIR)" \
++	GO_BUILD_BIN_DIR="$(GO_PKG_BUILD_BIN_DIR)" \
++	GO_BUILD_DEPENDS_PATH="$(GO_PKG_BUILD_DEPENDS_PATH)" \
++	GO_BUILD_DEPENDS_SRC="$(GO_PKG_BUILD_DEPENDS_SRC)"
++
++GO_PKG_TARGET_VARS= \
++	GOOS="$(GO_OS)" \
++	GOARCH="$(GO_ARCH)" \
++	GO386="$(GO_386)" \
++	GOARM="$(GO_ARM)" \
++	GOMIPS="$(GO_MIPS)" \
++	GOMIPS64="$(GO_MIPS64)" \
+ 	CGO_ENABLED=1 \
++	CC="$(TARGET_CC)" \
++	CXX="$(TARGET_CXX)" \
+ 	CGO_CFLAGS="$(filter-out $(GO_CFLAGS_TO_REMOVE),$(TARGET_CFLAGS))" \
+ 	CGO_CPPFLAGS="$(TARGET_CPPFLAGS)" \
+-	CGO_CXXFLAGS="$(filter-out $(GO_CFLAGS_TO_REMOVE),$(TARGET_CXXFLAGS))"
+-endef
++	CGO_CXXFLAGS="$(filter-out $(GO_CFLAGS_TO_REMOVE),$(TARGET_CXXFLAGS))" \
++	CGO_LDFLAGS="$(TARGET_LDFLAGS)"
+ 
+-# false if directory does not exist
+-GoPackage/is_dir_not_empty=$$$$($(FIND) $(1) -maxdepth 0 -type d \! -empty 2>/dev/null)
++GO_PKG_BUILD_VARS= \
++	GOPATH="$(GO_PKG_BUILD_DIR)" \
++	GOCACHE="$(GO_BUILD_CACHE_DIR)" \
++	GOMODCACHE="$(GO_MOD_CACHE_DIR)" \
++	GOENV=off
+ 
+-GoPackage/has_binaries=$(call GoPackage/is_dir_not_empty,$(GO_PKG_BUILD_BIN_DIR))
++GO_PKG_VARS= \
++	$(GO_PKG_TARGET_VARS) \
++	$(GO_PKG_BUILD_VARS)
++
++GO_PKG_DEFAULT_GCFLAGS= \
++	$(if $(GO_PKG_ENABLE_SPECTRE),-spectre all)
++
++GO_PKG_DEFAULT_ASMFLAGS= \
++	$(if $(GO_PKG_ENABLE_SPECTRE),-spectre all)
++
++GO_PKG_DEFAULT_LDFLAGS= \
++	-buildid '$(SOURCE_DATE_EPOCH)' \
++	-linkmode external \
++	-extldflags '$(patsubst -z%,-Wl$(comma)-z$(comma)%,$(TARGET_LDFLAGS))'
++
++GO_PKG_CUSTOM_LDFLAGS= \
++	$(GO_PKG_LDFLAGS) \
++	$(patsubst %,-X %,$(GO_PKG_LDFLAGS_X))
++
++GO_PKG_INSTALL_ARGS= \
++	-v \
++	-trimpath \
++	-ldflags "all=$(GO_PKG_DEFAULT_LDFLAGS)" \
++	$(if $(GO_PKG_DEFAULT_GCFLAGS),-gcflags "all=$(GO_PKG_DEFAULT_GCFLAGS)") \
++	$(if $(GO_PKG_DEFAULT_ASMFLAGS),-asmflags "all=$(GO_PKG_DEFAULT_ASMFLAGS)") \
++	$(if $(filter $(GO_PKG_ENABLE_PIE),1),-buildmode pie) \
++	$(if $(filter $(GO_ARCH),arm),-installsuffix "v$(GO_ARM)") \
++	$(if $(filter $(GO_ARCH),mips mipsle),-installsuffix "$(GO_MIPS)") \
++	$(if $(filter $(GO_ARCH),mips64 mips64le),-installsuffix "$(GO_MIPS64)") \
++	$(if $(GO_PKG_GCFLAGS),-gcflags "$(GO_PKG_GCFLAGS) $(GO_PKG_DEFAULT_GCFLAGS)") \
++	$(if $(GO_PKG_CUSTOM_LDFLAGS),-ldflags "$(GO_PKG_CUSTOM_LDFLAGS) $(GO_PKG_DEFAULT_LDFLAGS)") \
++	$(if $(GO_PKG_TAGS),-tags "$(GO_PKG_TAGS)")
+ 
+ define GoPackage/Build/Configure
+-	( \
+-		cd $(PKG_BUILD_DIR) ; \
+-		mkdir -p $(GO_PKG_BUILD_DIR)/bin $(GO_PKG_BUILD_DIR)/src \
+-			$(GO_PKG_CACHE_DIR) $(GO_PKG_TMP_DIR) ; \
+-		\
+-		files=$$$$($(FIND) ./ \
+-			-type d -a \( -path './.git' -o -path './$(GO_PKG_WORK_DIR_NAME)' \) -prune -o \
+-			\! -type d -print | \
+-			sed 's|^\./||') ; \
+-		\
+-		if [ "$(GO_PKG_INSTALL_ALL)" != 1 ]; then \
+-			code=$$$$(echo "$$$$files" | grep '\.\(c\|cc\|go\|h\|hh\|proto\|s\)$$$$') ; \
+-			testdata=$$$$(echo "$$$$files" | grep '\(^\|/\)testdata/') ; \
+-			\
+-			for pattern in $(GO_PKG_INSTALL_EXTRA); do \
+-				extra=$$$$(echo "$$$$extra"; echo "$$$$files" | grep "$$$$pattern") ; \
+-			done ; \
+-			\
+-			files=$$$$(echo "$$$$code"; echo "$$$$testdata"; echo "$$$$extra") ; \
+-			files=$$$$(echo "$$$$files" | grep -v '^[[:space:]]*$$$$' | sort -u) ; \
+-		fi ; \
+-		\
+-		echo "Copying files from $(PKG_BUILD_DIR) into $(GO_PKG_BUILD_DIR)/src/$(GO_PKG)" ; \
+-		for file in $$$$files; do \
+-			echo $$$$file ; \
+-			dest=$(GO_PKG_BUILD_DIR)/src/$(GO_PKG)/$$$$file ; \
+-			mkdir -p $$$$(dirname $$$$dest) ; \
+-			$(CP) $$$$file $$$$dest ; \
+-		done ; \
+-		\
+-		link_contents() { \
+-			local src=$$$$1 ; \
+-			local dest=$$$$2 ; \
+-			local dirs dir base ; \
+-			\
+-			if [ -n "$$$$($(FIND) $$$$src -mindepth 1 -maxdepth 1 -name '*.go' \! -type d)" ]; then \
+-				echo "$$$$src is already a Go library" ; \
+-				return 1 ; \
+-			fi ; \
+-			\
+-			dirs=$$$$($(FIND) $$$$src -mindepth 1 -maxdepth 1 -type d) ; \
+-			for dir in $$$$dirs; do \
+-				base=$$$$(basename $$$$dir) ; \
+-				if [ -d $$$$dest/$$$$base ]; then \
+-					case $$$$dir in \
+-					*$(GO_PKG_PATH)/src/$(GO_PKG)) \
+-						echo "$(GO_PKG) is already installed. Please check for circular dependencies." ;; \
+-					*) \
+-						link_contents $$$$src/$$$$base $$$$dest/$$$$base ;; \
+-					esac ; \
+-				else \
+-					echo "...$$$${src#$(GO_PKG_BUILD_DEPENDS_SRC)}/$$$$base" ; \
+-					$(LN) $$$$src/$$$$base $$$$dest/$$$$base ; \
+-				fi ; \
+-			done ; \
+-		} ; \
+-		\
+-		if [ "$(GO_PKG_SOURCE_ONLY)" != 1 ]; then \
+-			if [ -d $(GO_PKG_BUILD_DEPENDS_SRC) ]; then \
+-				echo "Symlinking directories from $(GO_PKG_BUILD_DEPENDS_SRC) into $(GO_PKG_BUILD_DIR)/src" ; \
+-				link_contents $(GO_PKG_BUILD_DEPENDS_SRC) $(GO_PKG_BUILD_DIR)/src ; \
+-			else \
+-				echo "$(GO_PKG_BUILD_DEPENDS_SRC) does not exist, skipping symlinks" ; \
+-			fi ; \
+-		else \
+-			echo "Not building binaries, skipping symlinks" ; \
+-		fi ; \
+-	)
++	$(GO_GENERAL_BUILD_CONFIG_VARS) \
++	$(GO_PKG_BUILD_CONFIG_VARS) \
++	$(SHELL) $(GO_INCLUDE_DIR)/golang-build.sh configure
+ endef
+ 
+ # $(1) additional arguments for go command line (optional)
+ define GoPackage/Build/Compile
+-	( \
+-		cd $(GO_PKG_BUILD_DIR) ; \
+-		export GOPATH=$(GO_PKG_BUILD_DIR) \
+-			GOCACHE=$(GO_PKG_CACHE_DIR) \
+-			GOTMPDIR=$(GO_PKG_TMP_DIR) \
+-			GOROOT_FINAL=$(GO_TARGET_ROOT) \
+-			CC=$(TARGET_CC) \
+-			CXX=$(TARGET_CXX) \
+-			$(call GoPackage/Environment) ; \
+-		\
+-		targets=$$$$(go list $(GO_PKG_BUILD_PKG)) ; \
+-		for pattern in $(GO_PKG_EXCLUDES); do \
+-			targets=$$$$(echo "$$$$targets" | grep -v "$$$$pattern") ; \
+-		done ; \
+-		\
+-		if [ "$(GO_PKG_GO_GENERATE)" = 1 ]; then \
+-			go generate -v $(1) $$$$targets ; \
+-		fi ; \
+-		\
+-		if [ "$(GO_PKG_SOURCE_ONLY)" != 1 ]; then \
+-			case $(GO_ARCH) in \
+-			arm)         installsuffix="-installsuffix v$(GO_ARM)" ;; \
+-			mips|mipsle) installsuffix="-installsuffix $(GO_MIPS)" ;; \
+-			esac ; \
+-			trimpath="all=-trimpath=$(GO_PKG_BUILD_DIR)" ; \
+-			ldflags="all=-linkmode external -extldflags '$(TARGET_LDFLAGS)'" ; \
+-			go install \
+-				$$$$installsuffix \
+-				-gcflags "$$$$trimpath" \
+-				-asmflags "$$$$trimpath" \
+-				-ldflags "$$$$ldflags" \
+-				-v \
+-				$(1) \
+-				$$$$targets ; \
+-			retval=$$$$? ; \
+-			\
+-			if [ "$$$$retval" -eq 0 ] && [ -z "$(call GoPackage/has_binaries)" ]; then \
+-				echo "No binaries were generated, consider adding GO_PKG_SOURCE_ONLY:=1 to Makefile" ; \
+-			fi ; \
+-		fi ; \
+-		exit $$$$retval ; \
+-	)
++	$(GO_GENERAL_BUILD_CONFIG_VARS) \
++	$(GO_PKG_BUILD_CONFIG_VARS) \
++	$(GO_PKG_VARS) \
++	$(SHELL) $(GO_INCLUDE_DIR)/golang-build.sh build $(GO_PKG_INSTALL_ARGS) $(1)
+ endef
+ 
+ define GoPackage/Build/InstallDev
+@@ -262,27 +267,33 @@ define GoPackage/Build/InstallDev
+ endef
+ 
+ define GoPackage/Package/Install/Bin
+-	if [ -n "$(call GoPackage/has_binaries)" ]; then \
+-		$(INSTALL_DIR) $(1)/usr/bin ; \
+-		$(INSTALL_BIN) $(GO_PKG_BUILD_BIN_DIR)/* $(1)/usr/bin/ ; \
+-	fi
++	$(GO_GENERAL_BUILD_CONFIG_VARS) \
++	$(GO_PKG_BUILD_CONFIG_VARS) \
++	$(SHELL) $(GO_INCLUDE_DIR)/golang-build.sh install_bin "$(1)"
+ endef
+ 
+ define GoPackage/Package/Install/Src
+-	dir=$$$$(dirname $(GO_PKG)) ; \
+-	$(INSTALL_DIR) $(1)$(GO_PKG_PATH)/src/$$$$dir ; \
+-	$(CP) $(GO_PKG_BUILD_DIR)/src/$(GO_PKG) $(1)$(GO_PKG_PATH)/src/$$$$dir/
++	$(GO_GENERAL_BUILD_CONFIG_VARS) \
++	$(GO_PKG_BUILD_CONFIG_VARS) \
++	$(SHELL) $(GO_INCLUDE_DIR)/golang-build.sh install_src "$(1)"
+ endef
+ 
+ define GoPackage/Package/Install
+-	$(call GoPackage/Package/Install/Bin,$(1))
++	$(if $(filter $(GO_PKG_SOURCE_ONLY),1),, \
++		$(call GoPackage/Package/Install/Bin,$(1)) \
++	)
+ 	$(call GoPackage/Package/Install/Src,$(1))
+ endef
+ 
+ 
+-ifneq ($(GO_PKG),)
++ifneq ($(strip $(GO_PKG)),)
++  ifeq ($(GO_TARGET_SPECTRE_SUPPORTED),1)
++    PKG_CONFIG_DEPENDS+=CONFIG_GOLANG_SPECTRE
++  endif
++
+   Build/Configure=$(call GoPackage/Build/Configure)
+   Build/Compile=$(call GoPackage/Build/Compile)
++  Hooks/Compile/Post+=Go/CacheCleanup
+   Build/InstallDev=$(call GoPackage/Build/InstallDev,$(1))
+ endif
+ 
+@@ -303,3 +314,14 @@ define GoSrcPackage
+     Package/$(1)/install=$$(call GoPackage/Package/Install/Src,$$(1))
+   endif
+ endef
++
++
++# Deprecated variables - these will be removed after the next OpenWrt release
++GO_PKG_PATH=$(GO_PKG_BUILD_DEPENDS_PATH)
++GO_PKG_WORK_DIR=$(PKG_BUILD_DIR)/$(GO_PKG_WORK_DIR_NAME)
++GO_PKG_CACHE_DIR=$(GO_BUILD_CACHE_DIR)
++GO_PKG_DEFAULT_VARS=$(GO_PKG_VARS)
++GoPackage/Environment=$(GO_PKG_VARS)
++GoPackage/is_dir_not_empty=$$$$($(FIND) "$(1)" -maxdepth 0 -type d \! -empty 2>/dev/null)
++GoPackage/has_binaries=$(call GoPackage/is_dir_not_empty,$(GO_PKG_BUILD_BIN_DIR))
++# End of deprecated variables
+diff --git a/lang/golang/golang-values.mk b/lang/golang/golang-values.mk
+index 9f972b0..278c0b1 100644
+--- a/lang/golang/golang-values.mk
++++ b/lang/golang/golang-values.mk
+@@ -1,5 +1,5 @@
+ #
+-# Copyright (C) 2018 Jeffery To
++# Copyright (C) 2018, 2020 Jeffery To
+ #
+ # This is free software, licensed under the GNU General Public License v2.
+ # See /LICENSE for more information.
+@@ -9,22 +9,119 @@ ifeq ($(origin GO_INCLUDE_DIR),undefined)
+   GO_INCLUDE_DIR:=$(dir $(lastword $(MAKEFILE_LIST)))
+ endif
+ 
+-include $(GO_INCLUDE_DIR)/golang-version.mk
+ 
++# Unset environment variables
++# There are more magic variables to track down, but ain't nobody got time for that
+ 
++# From https://golang.org/cmd/go/#hdr-Environment_variables
++
++# General-purpose environment variables:
++unexport \
++  GCCGO \
++  GOARCH \
++  GOBIN \
++  GOCACHE \
++  GOMODCACHE \
++  GODEBUG \
++  GOENV \
++  GOFLAGS \
++  GOOS \
++  GOPATH \
++  GOROOT \
++  GOTMPDIR
++# Unmodified:
++#   GOINSECURE
++#   GOPRIVATE
++#   GOPROXY
++#   GONOPROXY
++#   GOSUMDB
++#   GONOSUMDB
++#   GOVCS
++
++# Environment variables for use with cgo:
+ unexport \
+-  GOARCH GOBIN GOCACHE GODEBUG GOHOSTARCH GOOS GOPATH GORACE GOROOT GOTMPDIR GCCGO \
++  AR \
++  CC \
+   CGO_ENABLED \
+-  CGO_CFLAGS CGO_CFLAGS_ALLOW CGO_CFLAGS_DISALLOW \
++  CGO_CFLAGS   CGO_CFLAGS_ALLOW   CGO_CFLAGS_DISALLOW \
+   CGO_CPPFLAGS CGO_CPPFLAGS_ALLOW CGO_CPPFLAGS_DISALLOW \
+   CGO_CXXFLAGS CGO_CXXFLAGS_ALLOW CGO_CXXFLAGS_DISALLOW \
+-  CGO_FFLAGS CGO_FFLAGS_ALLOW CGO_FFLAGS_DISALLOW \
+-  CGO_LDFLAGS CGO_LDFLAGS_ALLOW CGO_LDFLAGS_DISALLOW \
+-  GOARM GO386 GOMIPS \
+-  GOROOT_FINAL GO_EXTLINK_ENABLED GIT_ALLOW_PROTOCOL \
+-  CC_FOR_TARGET CXX_FOR_TARGET GO_DISTFLAGS GO_GCFLAGS GO_LDFLAGS GOBUILDTIMELOGFILE GOROOT_BOOTSTRAP \
+-  BOOT_GO_GCFLAGS GOEXPERIMENT GOBOOTSTRAP_TOOLEXEC
+-  # there are more magic environment variables to track down, but ain't nobody got time for that
++  CGO_FFLAGS   CGO_FFLAGS_ALLOW   CGO_FFLAGS_DISALLOW \
++  CGO_LDFLAGS  CGO_LDFLAGS_ALLOW  CGO_LDFLAGS_DISALLOW \
++  CXX \
++  FC
++# Unmodified:
++#   PKG_CONFIG
++
++# Architecture-specific environment variables:
++unexport \
++  GOARM \
++  GO386 \
++  GOMIPS \
++  GOMIPS64 \
++  GOWASM
++
++# Special-purpose environment variables:
++unexport \
++  GCCGOTOOLDIR \
++  GOROOT_FINAL \
++  GO_EXTLINK_ENABLED
++# Unmodified:
++#   GIT_ALLOW_PROTOCOL
++
++# From https://golang.org/cmd/go/#hdr-Module_support
++unexport \
++  GO111MODULE
++
++# From https://golang.org/pkg/runtime/#hdr-Environment_Variables
++unexport \
++  GOGC \
++  GOMAXPROCS \
++  GORACE \
++  GOTRACEBACK
++
++# From https://golang.org/cmd/cgo/#hdr-Using_cgo_with_the_go_command
++unexport \
++  CC_FOR_TARGET \
++  CXX_FOR_TARGET
++# Todo:
++#   CC_FOR_${GOOS}_${GOARCH}
++#   CXX_FOR_${GOOS}_${GOARCH}
++
++# From https://golang.org/doc/install/source#environment
++unexport \
++  GOHOSTOS \
++  GOHOSTARCH \
++  GOPPC64
++
++# From https://golang.org/src/make.bash
++unexport \
++  GO_GCFLAGS \
++  GO_LDFLAGS \
++  GO_LDSO \
++  GO_DISTFLAGS \
++  GOBUILDTIMELOGFILE \
++  GOROOT_BOOTSTRAP
++
++# From https://golang.org/doc/go1.9#parallel-compile
++unexport \
++  GO19CONCURRENTCOMPILATION
++
++# From https://golang.org/src/cmd/dist/build.go
++unexport \
++  BOOT_GO_GCFLAGS \
++  BOOT_GO_LDFLAGS
++
++# From https://golang.org/src/cmd/dist/buildruntime.go
++unexport \
++  GOEXPERIMENT
++
++# From https://golang.org/src/cmd/dist/buildtool.go
++unexport \
++  GOBOOTSTRAP_TOOLEXEC
++
++
++# GOOS / GOARCH
+ 
+ go_arch=$(subst \
+   aarch64,arm64,$(subst \
+@@ -42,61 +139,121 @@ GO_HOST_OS:=$(call tolower,$(HOST_OS))
+ GO_HOST_ARCH:=$(call go_arch,$(subst \
+   armv6l,arm,$(subst \
+   armv7l,arm,$(subst \
+-  i486,i386,$(subst \
+-  i586,i386,$(subst \
+-  i686,i386,$(HOST_ARCH)))))))
++  i686,i386,$(HOST_ARCH)))))
+ GO_HOST_OS_ARCH:=$(GO_HOST_OS)_$(GO_HOST_ARCH)
+ 
+-GO_HOST_TARGET_SAME:=$(if $(and $(findstring $(GO_OS_ARCH),$(GO_HOST_OS_ARCH)),$(findstring $(GO_HOST_OS_ARCH),$(GO_OS_ARCH))),1)
+-GO_HOST_TARGET_DIFFERENT:=$(if $(GO_HOST_TARGET_SAME),,1)
++ifeq ($(GO_OS_ARCH),$(GO_HOST_OS_ARCH))
++  GO_HOST_TARGET_SAME:=1
++else
++  GO_HOST_TARGET_DIFFERENT:=1
++endif
++
++ifeq ($(GO_ARCH),386)
++  ifeq ($(CONFIG_TARGET_x86_geode)$(CONFIG_TARGET_x86_legacy),y)
++    GO_386:=softfloat
++  else
++    GO_386:=sse2
++  endif
+ 
+-# ensure binaries can run on older CPUs
+-GO_386:=387
++  # -fno-plt: causes "unexpected GOT reloc for non-dynamic symbol" errors
++  GO_CFLAGS_TO_REMOVE:=-fno-plt
+ 
+-ifeq ($(GO_ARCH),arm)
++else ifeq ($(GO_ARCH),arm)
+   GO_TARGET_FPU:=$(word 2,$(subst +,$(space),$(call qstrip,$(CONFIG_CPU_TYPE))))
+ 
+-  # FPU names from https://gcc.gnu.org/onlinedocs/gcc-8.3.0/gcc/ARM-Options.html#index-mfpu-1
+-  # see also https://github.com/gcc-mirror/gcc/blob/gcc-8_3_0-release/gcc/config/arm/arm-cpus.in
+-  #
+-  # Assumptions:
+-  #
+-  # * -d16 variants (16 instead of 32 double-precision registers) acceptable
+-  #   Go doesn't appear to check the HWCAP_VFPv3D16 flag in
+-  #   https://github.com/golang/go/blob/release-branch.go1.13/src/runtime/os_linux_arm.go
+-  #
+-  # * Double-precision required
+-  #   Based on no evidence(!)
+-  #   Excludes vfpv3xd, vfpv3xd-fp16, fpv4-sp-d16, fpv5-sp-d16
+-
+-  GO_ARM_7_FPUS:= \
+-    vfpv3 vfpv3-fp16 vfpv3-d16 vfpv3-d16-fp16 neon neon-vfpv3 neon-fp16 \
+-    vfpv4 vfpv4-d16 neon-vfpv4 \
+-    fpv5-d16 fp-armv8 neon-fp-armv8 crypto-neon-fp-armv8
+-
+-  GO_ARM_6_FPUS:=vfp vfpv2
+-
+-  ifneq ($(filter $(GO_TARGET_FPU),$(GO_ARM_7_FPUS)),)
+-    GO_ARM:=7
+-  else ifneq ($(filter $(GO_TARGET_FPU),$(GO_ARM_6_FPUS)),)
++  # FPU names from https://gcc.gnu.org/onlinedocs/gcc-8.4.0/gcc/ARM-Options.html#index-mfpu-1
++  # see also https://github.com/gcc-mirror/gcc/blob/releases/gcc-8.4.0/gcc/config/arm/arm-cpus.in
++
++  ifeq ($(GO_TARGET_FPU),)
++    GO_ARM:=5
++  else ifneq ($(filter $(GO_TARGET_FPU),vfp vfpv2),)
+     GO_ARM:=6
+   else
+-    GO_ARM:=5
++    GO_ARM:=7
++  endif
++
++else ifneq ($(filter $(GO_ARCH),mips mipsle),)
++  ifeq ($(CONFIG_HAS_FPU),y)
++    GO_MIPS:=hardfloat
++  else
++    GO_MIPS:=softfloat
++  endif
++
++  # -mips32r2: conflicts with -march=mips32 set by go
++  GO_CFLAGS_TO_REMOVE:=-mips32r2
++
++else ifneq ($(filter $(GO_ARCH),mips64 mips64le),)
++  ifeq ($(CONFIG_HAS_FPU),y)
++    GO_MIPS64:=hardfloat
++  else
++    GO_MIPS64:=softfloat
+   endif
++
++endif
++
++
++# Target Go
++
++GO_ARCH_DEPENDS:=@(aarch64||arm||i386||i686||mips||mips64||mips64el||mipsel||powerpc64||x86_64)
++
++
++# ASLR/PIE
++
++GO_PIE_SUPPORTED_OS_ARCH:= \
++  android_386  android_amd64  android_arm  android_arm64 \
++  linux_386    linux_amd64    linux_arm    linux_arm64 \
++  \
++  windows_386  windows_amd64  windows_arm \
++  \
++  darwin_amd64 darwin_arm64 \
++  \
++  freebsd_amd64 \
++  \
++  aix_ppc64 \
++  \
++  linux_ppc64le linux_riscv64 linux_s390x
++
++go_pie_install_suffix=$(if $(filter $(1),aix_ppc64 windows_386 windows_amd64 windows_arm),,shared)
++
++ifneq ($(filter $(GO_HOST_OS_ARCH),$(GO_PIE_SUPPORTED_OS_ARCH)),)
++  GO_HOST_PIE_SUPPORTED:=1
++  GO_HOST_PIE_INSTALL_SUFFIX:=$(call go_pie_install_suffix,$(GO_HOST_OS_ARCH))
++endif
++
++ifneq ($(filter $(GO_OS_ARCH),$(GO_PIE_SUPPORTED_OS_ARCH)),)
++  GO_TARGET_PIE_SUPPORTED:=1
++  GO_TARGET_PIE_INSTALL_SUFFIX:=$(call go_pie_install_suffix,$(GO_OS_ARCH))
++endif
++
++
++# Spectre mitigations
++
++GO_SPECTRE_SUPPORTED_ARCH:=amd64
++
++ifneq ($(filter $(GO_HOST_ARCH),$(GO_SPECTRE_SUPPORTED_ARCH)),)
++  GO_HOST_SPECTRE_SUPPORTED:=1
+ endif
+ 
+-GO_MIPS:=$(if $(filter $(GO_ARCH),mips mipsle),$(if $(CONFIG_HAS_FPU),hardfloat,softfloat),)
++ifneq ($(filter $(GO_ARCH),$(GO_SPECTRE_SUPPORTED_ARCH)),)
++  GO_TARGET_SPECTRE_SUPPORTED:=1
++endif
++
++
++# General build info
++
++GO_BUILD_CACHE_DIR:=$(or $(call qstrip,$(CONFIG_GOLANG_BUILD_CACHE_DIR)),$(TMP_DIR)/go-build)
++GO_MOD_CACHE_DIR:=$(DL_DIR)/go-mod-cache
+ 
+-# -fno-plt: causes "unexpected GOT reloc for non-dynamic symbol" errors
+-# -mips32r2: conflicts with -march=mips32 set by go
+-GO_CFLAGS_TO_REMOVE:=$(if \
+-$(filter $(GO_ARCH),386),-fno-plt,$(if \
+-$(filter $(GO_ARCH),mips mipsle),-mips32r2,))
++GO_MOD_ARGS= \
++	-modcacherw
+ 
+-# mips64 / mips64el doesn't have softfloat support yet
+-# https://github.com/golang/go/issues/14635
+-GO_ARCH_DEPENDS:=@(aarch64||arm||i386||i686||mips||mipsel||powerpc64||x86_64)
++GO_GENERAL_BUILD_CONFIG_VARS= \
++	CONFIG_GOLANG_MOD_CACHE_WORLD_READABLE="$(CONFIG_GOLANG_MOD_CACHE_WORLD_READABLE)" \
++	GO_BUILD_CACHE_DIR="$(GO_BUILD_CACHE_DIR)" \
++	GO_MOD_CACHE_DIR="$(GO_MOD_CACHE_DIR)" \
++	GO_MOD_ARGS="$(GO_MOD_ARGS)"
+ 
+-GO_TARGET_PREFIX:=/usr
+-GO_TARGET_VERSION_ID:=$(GO_VERSION_MAJOR_MINOR)
+-GO_TARGET_ROOT:=$(GO_TARGET_PREFIX)/lib/go-$(GO_TARGET_VERSION_ID)
++define Go/CacheCleanup
++	$(GO_GENERAL_BUILD_CONFIG_VARS) \
++	$(SHELL) $(GO_INCLUDE_DIR)/golang-build.sh cache_cleanup
++endef
+diff --git a/lang/golang/golang-version.mk b/lang/golang/golang-version.mk
+deleted file mode 100644
+index b31f82f..0000000
+--- a/lang/golang/golang-version.mk
++++ /dev/null
+@@ -1,14 +0,0 @@
+-#
+-# Copyright (C) 2018 Jeffery To
+-#
+-# This is free software, licensed under the GNU General Public License v2.
+-# See /LICENSE for more information.
+-#
+-
+-ifeq ($(origin GO_INCLUDE_DIR),undefined)
+-  GO_INCLUDE_DIR:=$(dir $(lastword $(MAKEFILE_LIST)))
+-endif
+-
+-
+-GO_VERSION_MAJOR_MINOR:=1.10
+-GO_VERSION_PATCH:=8
+diff --git a/lang/golang/golang/Config.in b/lang/golang/golang/Config.in
+new file mode 100644
+index 0000000..76fd85c
+--- /dev/null
++++ b/lang/golang/golang/Config.in
+@@ -0,0 +1,33 @@
++menu "Configuration"
++
++config GOLANG_EXTERNAL_BOOTSTRAP_ROOT
++	string "External bootstrap Go root directory"
++	default ""
++	help
++	  Path to a working Go tree (>= Go 1.4), with bin, pkg, and src
++	  subdirectories and the Go compiler at bin/go.
++
++	  If specified, the existing Go installation will be used to
++	  compile host (buildroot) Go.
++
++	  Leave blank to compile the default bootstrap Go.
++
++config GOLANG_BUILD_CACHE_DIR
++	string "Go build cache directory"
++	default ""
++	help
++	  Store the Go build cache in this directory.
++	  If not set, uses '$(TMP_DIR)/go-build'.
++
++config GOLANG_MOD_CACHE_WORLD_READABLE
++	bool "Ensure Go module cache is world-readable"
++	default n
++
++config GOLANG_SPECTRE
++	bool "Enable Spectre mitigations"
++	default n
++	depends on x86_64
++	help
++	  Currently only available for x86-64 (amd64).
++
++endmenu
+diff --git a/lang/golang/golang/Makefile b/lang/golang/golang/Makefile
+index cbc16de..2beff8c 100644
+--- a/lang/golang/golang/Makefile
++++ b/lang/golang/golang/Makefile
+@@ -1,12 +1,14 @@
+ #
+-# Copyright (C) 2018 Jeffery To
++# Copyright (C) 2018, 2020 Jeffery To
+ #
+ # This is free software, licensed under the GNU General Public License v2.
+ # See /LICENSE for more information.
+ #
+ 
+ include $(TOPDIR)/rules.mk
+-include ../golang-version.mk
++
++GO_VERSION_MAJOR_MINOR:=1.16
++GO_VERSION_PATCH:=6
+ 
+ PKG_NAME:=golang
+ PKG_VERSION:=$(GO_VERSION_MAJOR_MINOR)$(if $(GO_VERSION_PATCH),.$(GO_VERSION_PATCH))
+@@ -18,21 +20,21 @@ GO_SOURCE_URLS:=https://dl.google.com/go/ \
+ 
+ PKG_SOURCE:=go$(PKG_VERSION).src.tar.gz
+ PKG_SOURCE_URL:=$(GO_SOURCE_URLS)
+-PKG_HASH:=6faf74046b5e24c2c0b46e78571cca4d65e1b89819da1089e53ea57539c63491
++PKG_HASH:=a3a5d4bc401b51db065e4f93b523347a4d343ae0c0b08a65c3423b05a138037d
+ 
++PKG_MAINTAINER:=Jeffery To <jeffery.to@gmail.com>
+ PKG_LICENSE:=BSD-3-Clause
+ PKG_LICENSE_FILES:=LICENSE
+-PKG_MAINTAINER:=Jeffery To <jeffery.to@gmail.com>
++PKG_CPE_ID:=cpe:/a:golang:go
+ 
+ PKG_BUILD_DEPENDS:=golang/host
+ PKG_BUILD_DIR:=$(BUILD_DIR)/go-$(PKG_VERSION)
+ PKG_BUILD_PARALLEL:=1
+ PKG_USE_MIPS16:=0
+ 
+-PKG_GO_WORK_DIR:=$(PKG_BUILD_DIR)/.go_work
+-PKG_GO_HOST_CACHE_DIR:=$(PKG_GO_WORK_DIR)/host_cache
+-PKG_GO_TARGET_CACHE_DIR:=$(PKG_GO_WORK_DIR)/target_cache
+-PKG_GO_TMP_DIR:=$(PKG_GO_WORK_DIR)/tmp
++PKG_GO_PREFIX:=/usr
++PKG_GO_VERSION_ID:=$(GO_VERSION_MAJOR_MINOR)
++PKG_GO_ROOT:=$(PKG_GO_PREFIX)/lib/go-$(PKG_GO_VERSION_ID)
+ 
+ HOST_BUILD_DIR:=$(BUILD_DIR_HOST)/go-$(PKG_VERSION)
+ HOST_BUILD_PARALLEL:=1
+@@ -42,18 +44,30 @@ HOST_GO_VERSION_ID:=cross
+ HOST_GO_ROOT:=$(HOST_GO_PREFIX)/lib/go-$(HOST_GO_VERSION_ID)
+ 
+ HOST_GO_VALID_OS_ARCH:= \
+-                                android_arm \
+-  darwin_386   darwin_amd64     darwin_arm   darwin_arm64 \
+-               dragonfly_amd64 \
+-  freebsd_386  freebsd_amd64    freebsd_arm \
+-  linux_386    linux_amd64      linux_arm    linux_arm64 \
+-  netbsd_386   netbsd_amd64     netbsd_arm \
+-  openbsd_386  openbsd_amd64    openbsd_arm \
+-  plan9_386    plan9_amd64 \
+-               solaris_amd64 \
+-  windows_386  windows_amd64 \
++  android_386  android_amd64  android_arm  android_arm64 \
++  freebsd_386  freebsd_amd64  freebsd_arm  freebsd_arm64 \
++  linux_386    linux_amd64    linux_arm    linux_arm64 \
++  openbsd_386  openbsd_amd64  openbsd_arm  openbsd_arm64 \
++  netbsd_386   netbsd_amd64   netbsd_arm   netbsd_arm64 \
++  \
++  plan9_386    plan9_amd64    plan9_arm \
++  windows_386  windows_amd64  windows_arm \
++  \
++  darwin_amd64 darwin_arm64 \
++  ios_amd64    ios_arm64 \
+   \
+-  linux_ppc64 linux_ppc64le linux_mips linux_mipsle linux_mips64 linux_mips64le
++  dragonfly_amd64 \
++  illumos_amd64 \
++  solaris_amd64 \
++  \
++  aix_ppc64 \
++  js_wasm \
++  \
++  linux_ppc64 linux_ppc64le \
++  linux_mips linux_mipsle linux_mips64 linux_mips64le \
++  linux_riscv64 linux_s390x \
++  \
++  openbsd_mips64
+ 
+ BOOTSTRAP_SOURCE:=go1.4-bootstrap-20171003.tar.gz
+ BOOTSTRAP_SOURCE_URL:=$(GO_SOURCE_URLS)
+@@ -77,14 +91,18 @@ include $(INCLUDE_DIR)/package.mk
+ include ../golang-compiler.mk
+ include ../golang-package.mk
+ 
+-PKG_UNPACK:=$(HOST_TAR) -C $(PKG_BUILD_DIR) --strip-components=1 -xzf $(DL_DIR)/$(PKG_SOURCE)
+-HOST_UNPACK:=$(HOST_TAR) -C $(HOST_BUILD_DIR) --strip-components=1 -xzf $(DL_DIR)/$(PKG_SOURCE)
+-BOOTSTRAP_UNPACK:=$(HOST_TAR) -C $(BOOTSTRAP_BUILD_DIR) --strip-components=1 -xzf $(DL_DIR)/$(BOOTSTRAP_SOURCE)
++PKG_UNPACK:=$(HOST_TAR) -C "$(PKG_BUILD_DIR)" --strip-components=1 -xzf "$(DL_DIR)/$(PKG_SOURCE)"
++HOST_UNPACK:=$(HOST_TAR) -C "$(HOST_BUILD_DIR)" --strip-components=1 -xzf "$(DL_DIR)/$(PKG_SOURCE)"
++BOOTSTRAP_UNPACK:=$(HOST_TAR) -C "$(BOOTSTRAP_BUILD_DIR)" --strip-components=1 -xzf "$(DL_DIR)/$(BOOTSTRAP_SOURCE)"
+ 
+-# don't strip ELF executables in test data (and go itself)
++# don't strip ELF executables in test data
+ RSTRIP:=:
+ STRIP:=:
+ 
++ifeq ($(GO_TARGET_SPECTRE_SUPPORTED),1)
++  PKG_CONFIG_DEPENDS+=CONFIG_GOLANG_SPECTRE
++endif
++
+ define Package/golang/Default
+ $(call GoPackage/GoSubMenu)
+   TITLE:=Go programming language
+@@ -120,6 +138,10 @@ This package provides an assembler, compiler, linker, and compiled
+ libraries for the Go programming language.
+ endef
+ 
++define Package/golang/config
++  source "$(SOURCE)/Config.in"
++endef
++
+ define Package/golang-doc
+ $(call Package/golang/Default)
+   TITLE+= (documentation)
+@@ -143,36 +165,62 @@ This package provides the Go programming language source files needed
+ for cross-compilation.
+ endef
+ 
+-define Download/golang-bootstrap
+-  FILE:=$(BOOTSTRAP_SOURCE)
+-  URL:=$(BOOTSTRAP_SOURCE_URL)
+-  HASH:=$(BOOTSTRAP_HASH)
+-endef
+-$(eval $(call Download,golang-bootstrap))
+ 
+-$(eval $(call GoCompiler/AddProfile,Bootstrap,$(BOOTSTRAP_BUILD_DIR),,bootstrap,$(GO_HOST_OS_ARCH)))
+-$(eval $(call GoCompiler/AddProfile,Host,$(HOST_BUILD_DIR),$(HOST_GO_PREFIX),$(HOST_GO_VERSION_ID),$(GO_HOST_OS_ARCH)))
+-$(eval $(call GoCompiler/AddProfile,Package,$(PKG_BUILD_DIR),$(GO_TARGET_PREFIX),$(GO_TARGET_VERSION_ID),$(GO_OS_ARCH)))
++# Bootstrap
++
++BOOTSTRAP_ROOT_DIR:=$(call qstrip,$(CONFIG_GOLANG_EXTERNAL_BOOTSTRAP_ROOT))
++
++ifeq ($(BOOTSTRAP_ROOT_DIR),)
++  BOOTSTRAP_ROOT_DIR:=$(BOOTSTRAP_BUILD_DIR)
++
++  define Download/golang-bootstrap
++    FILE:=$(BOOTSTRAP_SOURCE)
++    URL:=$(BOOTSTRAP_SOURCE_URL)
++    HASH:=$(BOOTSTRAP_HASH)
++  endef
++  $(eval $(call Download,golang-bootstrap))
+ 
+-define Host/Prepare
+-	$(call Host/Prepare/Default)
+-	mkdir -p $(BOOTSTRAP_BUILD_DIR)
++  define Bootstrap/Prepare
++	mkdir -p "$(BOOTSTRAP_BUILD_DIR)"
+ 	$(BOOTSTRAP_UNPACK)
+-endef
++  endef
++  Hooks/HostPrepare/Post+=Bootstrap/Prepare
++
++  $(eval $(call GoCompiler/AddProfile,Bootstrap,$(BOOTSTRAP_BUILD_DIR),,bootstrap,$(GO_HOST_OS_ARCH)))
++endif
++
++
++# Host
++
++ifeq ($(GO_HOST_PIE_SUPPORTED),1)
++  HOST_GO_ENABLE_PIE:=1
++endif
++
++# when using GO_LDFLAGS to set buildmode=pie, the PIE install suffix
++# does not apply (we also delete the std lib during Host/Install)
++
++$(eval $(call GoCompiler/AddProfile,Host,$(HOST_BUILD_DIR),$(HOST_GO_PREFIX),$(HOST_GO_VERSION_ID),$(GO_HOST_OS_ARCH),$(HOST_GO_INSTALL_SUFFIX)))
++
++HOST_GO_VARS= \
++	GOCACHE="$(GO_BUILD_CACHE_DIR)" \
++	GOENV=off \
++	CC="$(HOSTCC_NOCACHE)" \
++	CXX="$(HOSTCXX_NOCACHE)"
+ 
+ define Host/Compile
+ 	$(call GoCompiler/Bootstrap/CheckHost,$(BOOTSTRAP_GO_VALID_OS_ARCH))
+ 	$(call GoCompiler/Host/CheckHost,$(HOST_GO_VALID_OS_ARCH))
+ 
++	mkdir -p "$(GO_BUILD_CACHE_DIR)"
++
+ 	$(call GoCompiler/Bootstrap/Make, \
+-		CC=$(HOSTCC_NOCACHE) \
+-		CXX=$(HOSTCXX_NOCACHE) \
++		$(HOST_GO_VARS) \
+ 	)
+ 
+ 	$(call GoCompiler/Host/Make, \
+-		GOROOT_BOOTSTRAP=$(BOOTSTRAP_BUILD_DIR) \
+-		CC=$(HOSTCC_NOCACHE) \
+-		CXX=$(HOSTCXX_NOCACHE) \
++		GOROOT_BOOTSTRAP="$(BOOTSTRAP_ROOT_DIR)" \
++		$(if $(HOST_GO_ENABLE_PIE),GO_LDFLAGS="-buildmode pie") \
++		$(HOST_GO_VARS) \
+ 	)
+ endef
+ 
+@@ -180,82 +228,118 @@ endef
+ # when go compiles a program, it will use the host std lib
+ # so remove it now and force go to rebuild std for target later
+ define Host/Install
++	$(call Host/Uninstall)
++
+ 	$(call GoCompiler/Host/Install/Bin,)
+ 	$(call GoCompiler/Host/Install/Src,)
+ 
+ 	$(call GoCompiler/Host/Install/BinLinks,)
+ 
+-	rm -rf $(HOST_GO_ROOT)/pkg/$(GO_HOST_OS_ARCH)
++	rm -rf "$(HOST_GO_ROOT)/pkg/$(GO_HOST_OS_ARCH)$(if $(HOST_GO_INSTALL_SUFFIX),_$(HOST_GO_INSTALL_SUFFIX))"
+ 
+-	$(INSTALL_DIR) $(HOST_GO_ROOT)/openwrt
+-	$(INSTALL_BIN) ./files/go-gcc-helper $(HOST_GO_ROOT)/openwrt/
+-	$(LN) go-gcc-helper $(HOST_GO_ROOT)/openwrt/gcc
+-	$(LN) go-gcc-helper $(HOST_GO_ROOT)/openwrt/g++
++	$(INSTALL_DIR) "$(HOST_GO_ROOT)/openwrt"
++	$(INSTALL_BIN) ./files/go-gcc-helper "$(HOST_GO_ROOT)/openwrt/"
++	$(LN) go-gcc-helper "$(HOST_GO_ROOT)/openwrt/gcc"
++	$(LN) go-gcc-helper "$(HOST_GO_ROOT)/openwrt/g++"
+ endef
+ 
+ define Host/Uninstall
+-	rm -rf $(HOST_GO_ROOT)/openwrt
++	rm -rf "$(HOST_GO_ROOT)/openwrt"
+ 
+ 	$(call GoCompiler/Host/Uninstall/BinLinks,)
+ 
+ 	$(call GoCompiler/Host/Uninstall,)
+ endef
+ 
++
++# Target
++
++ifeq ($(GO_PKG_ENABLE_PIE),1)
++  PKG_GO_INSTALL_SUFFIX:=$(GO_TARGET_PIE_INSTALL_SUFFIX)
++endif
++
++$(eval $(call GoCompiler/AddProfile,Package,$(PKG_BUILD_DIR),$(PKG_GO_PREFIX),$(PKG_GO_VERSION_ID),$(GO_OS_ARCH),$(PKG_GO_INSTALL_SUFFIX)))
++
++PKG_GO_ZBOOTSTRAP_MODS:= \
++	s/defaultGO386 = `[^`]*`/defaultGO386 = `$(or $(GO_386),sse2)`/; \
++	s/defaultGOARM = `[^`]*`/defaultGOARM = `$(or $(GO_ARM),5)`/; \
++	s/defaultGOMIPS = `[^`]*`/defaultGOMIPS = `$(or $(GO_MIPS),hardfloat)`/; \
++	s/defaultGOMIPS64 = `[^`]*`/defaultGOMIPS64 = `$(or $(GO_MIPS64),hardfloat)`/; \
++	s/defaultGOPPC64 = `[^`]*`/defaultGOPPC64 = `power8`/;
++
++PKG_GO_VARS= \
++	GOCACHE="$(GO_BUILD_CACHE_DIR)" \
++	GOENV=off \
++	GO_GCC_HELPER_PATH="$$$$PATH" \
++	CC=gcc \
++	CXX=g++ \
++	PKG_CONFIG=pkg-config \
++	PATH="$(HOST_GO_ROOT)/openwrt:$$$$PATH"
++
++PKG_GO_GCFLAGS= \
++	$(if $(GO_PKG_ENABLE_SPECTRE),-spectre all)
++
++PKG_GO_ASMFLAGS= \
++	$(if $(GO_PKG_ENABLE_SPECTRE),-spectre all)
++
++PKG_GO_LDFLAGS= \
++	-buildid '$(SOURCE_DATE_EPOCH)' \
++	-linkmode external \
++	-extldflags '$(patsubst -z%,-Wl$(comma)-z$(comma)%,$(TARGET_LDFLAGS))' \
++	$(if $(CONFIG_NO_STRIP)$(CONFIG_DEBUG),,-s -w)
++
++# setting -trimpath is not necessary here because the paths inside the
++# compiler binary are relative to GOROOT_FINAL (PKG_GO_ROOT), which is
++# static / not dependent on the build environment
++PKG_GO_INSTALL_ARGS= \
++	-ldflags "all=$(PKG_GO_LDFLAGS)" \
++	$(if $(PKG_GO_GCFLAGS),-gcflags "all=$(PKG_GO_GCFLAGS)") \
++	$(if $(PKG_GO_ASMFLAGS),-asmflags "all=$(PKG_GO_ASMFLAGS)") \
++	$(if $(filter $(GO_PKG_ENABLE_PIE),1),-buildmode pie)
++
+ define Build/Compile
+-	mkdir -p \
+-		$(PKG_GO_HOST_CACHE_DIR) \
+-		$(PKG_GO_TARGET_CACHE_DIR) \
+-		$(PKG_GO_TMP_DIR)
++	mkdir -p "$(GO_BUILD_CACHE_DIR)"
+ 
+ 	@echo "Building target Go first stage"
+ 
+ 	$(call GoCompiler/Package/Make, \
+-		GOROOT_BOOTSTRAP=$(HOST_GO_ROOT) \
+-		GOCACHE=$(PKG_GO_HOST_CACHE_DIR) \
+-		GOTMPDIR=$(PKG_GO_TMP_DIR) \
++		GOROOT_BOOTSTRAP="$(HOST_GO_ROOT)" \
+ 		GO_GCC_HELPER_CC="$(HOSTCC)" \
+ 		GO_GCC_HELPER_CXX="$(HOSTCXX)" \
+-		GO_GCC_HELPER_PATH=$$$$PATH \
+-		CC=gcc \
+-		CXX=g++ \
+-		PKG_CONFIG=pkg-config \
+-		PATH=$(HOST_GO_ROOT)/openwrt:$$$$PATH \
++		$(PKG_GO_VARS) \
+ 	)
+ 
++	$(SED) '$(PKG_GO_ZBOOTSTRAP_MODS)' \
++		"$(PKG_BUILD_DIR)/src/cmd/internal/objabi/zbootstrap.go"
++
+ 	@echo "Building target Go second stage"
+ 
+ 	( \
+-		cd $(PKG_BUILD_DIR)/bin ; \
++		cd "$(PKG_BUILD_DIR)/bin" ; \
++		export $(GO_PKG_TARGET_VARS) ; \
+ 		$(CP) go go-host ; \
+-		GOROOT_FINAL=$(GO_TARGET_ROOT) \
+-		GOCACHE=$(PKG_GO_TARGET_CACHE_DIR) \
+-		GOTMPDIR=$(PKG_GO_TMP_DIR) \
++		GOROOT_FINAL="$(PKG_GO_ROOT)" \
+ 		GO_GCC_HELPER_CC="$(TARGET_CC)" \
+ 		GO_GCC_HELPER_CXX="$(TARGET_CXX)" \
+-		GO_GCC_HELPER_PATH=$$$$PATH \
+-		CC=gcc \
+-		CXX=g++ \
+-		PKG_CONFIG=pkg-config \
+-		PATH=$(HOST_GO_ROOT)/openwrt:$$$$PATH \
+-		$(call GoPackage/Environment) \
+-		./go-host install -a -v std cmd ; \
+-		retval=$$$$? ; \
++		$(PKG_GO_VARS) \
++		./go-host install -a $(PKG_GO_INSTALL_ARGS) std cmd ; \
++		retval="$$$$?" ; \
+ 		rm -f go-host ; \
+-		exit $$$$retval ; \
++		exit "$$$$retval" ; \
+ 	)
+ endef
+ 
+ define Package/golang/install
+-	$(call GoCompiler/Package/Install/Bin,$(1)$(GO_TARGET_PREFIX))
+-	$(call GoCompiler/Package/Install/BinLinks,$(1)$(GO_TARGET_PREFIX))
++	$(call GoCompiler/Package/Install/Bin,$(1)$(PKG_GO_PREFIX))
++	$(call GoCompiler/Package/Install/BinLinks,$(1)$(PKG_GO_PREFIX))
+ endef
+ 
+ define Package/golang-doc/install
+-	$(call GoCompiler/Package/Install/Doc,$(1)$(GO_TARGET_PREFIX))
++	$(call GoCompiler/Package/Install/Doc,$(1)$(PKG_GO_PREFIX))
+ endef
+ 
+ define Package/golang-src/install
+-	$(call GoCompiler/Package/Install/Src,$(1)$(GO_TARGET_PREFIX))
++	$(call GoCompiler/Package/Install/Src,$(1)$(PKG_GO_PREFIX))
+ endef
+ 
+ # src/debug contains ELF executables as test data
+@@ -266,6 +350,7 @@ define Package/golang-src/extra_provides
+ 	echo 'libc.so.6'
+ endef
+ 
++
+ $(eval $(call HostBuild))
+ $(eval $(call BuildPackage,golang))
+ $(eval $(call BuildPackage,golang-doc))
+diff --git a/lang/golang/golang/files/go-gcc-helper b/lang/golang/golang/files/go-gcc-helper
+index 3d3f893..b396e30 100644
+--- a/lang/golang/golang/files/go-gcc-helper
++++ b/lang/golang/golang/files/go-gcc-helper
+@@ -1,23 +1,41 @@
+ #!/bin/sh
+ 
+ me=go-gcc-helper
+-name=$(basename $0)
++name="${0##*/}"
+ 
+-case $name in
++log() {
++	# shellcheck disable=SC2039
++	local IFS=" "
++	printf '%s\n' "$me: $*"
++}
++
++case "$name" in
+ gcc)
+-	cmd=$GO_GCC_HELPER_CC
++	if [ -z "$GO_GCC_HELPER_CC" ]; then
++		log "missing GO_GCC_HELPER_CC"
++		exit 1
++	fi
++	cmd="$GO_GCC_HELPER_CC"
+ 	;;
+ g++)
+-	cmd=$GO_GCC_HELPER_CXX
++	if [ -z "$GO_GCC_HELPER_CXX" ]; then
++		log "missing GO_GCC_HELPER_CXX"
++		exit 1
++	fi
++	cmd="$GO_GCC_HELPER_CXX"
+ 	;;
+ *)
+-	echo "$me: unknown command \"$name\""
++	log "unknown command \"$name\""
+ 	exit 1
+ 	;;
+ esac
+ 
+-export PATH="$GO_GCC_HELPER_PATH"
++if [ -n "$GO_GCC_HELPER_PATH" ]; then
++	export PATH="$GO_GCC_HELPER_PATH"
++else
++	log "missing GO_GCC_HELPER_PATH"
++fi
+ 
+-echo "$me: running $cmd $@"
++log "running $cmd $*"
+ 
+ $cmd "$@"
