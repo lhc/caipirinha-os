@@ -1,6 +1,6 @@
 # Projeto Caipirinha
 Projeto aberto e colaborativo, estamos criando customizações para o OpenWRT, uma versão do LHC. Estamos trabalhando para montar uma medidor de qualidade de conexão de internet criando um novo menu e funcionalidade no OpenWRT.
-
+![Caipirinha-OS](assets/Login.png)
 ##
 # Como preparar o ambiente de build
 
