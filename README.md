@@ -34,8 +34,9 @@ Execute o script para preparar o ambiente (somente na primeira vez)
 
 Execute o contêiner:
 ``` bash
-./build_image.sh -a caipirinha
+./build_image.sh -a chirpstackos_rpi4
 ```
+Esse comando irá buildar a versão do Caipirinha-OS para a raspberry pi 4 com o chirpstack (LoRaWan)
 
 ## Opções avançadas:
 
